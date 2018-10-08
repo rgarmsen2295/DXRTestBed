@@ -52,3 +52,5 @@
 #include "DXSampleHelper.h"
 #include "DeviceResources.h"
 
+#include "Camera.h"
+

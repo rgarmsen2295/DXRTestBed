@@ -133,6 +133,8 @@ private:
     bool m_forceComputeFallback;
     StepTimer m_timer;
     float m_curRotationAngleRad;
+
+	Camera m_camera;
     XMVECTOR m_eye;
     XMVECTOR m_at;
     XMVECTOR m_up;

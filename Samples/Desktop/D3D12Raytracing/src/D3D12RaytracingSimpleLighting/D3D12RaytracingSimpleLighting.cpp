@@ -89,9 +89,9 @@ void D3D12RaytracingSimpleLighting::UpdateCameraMatrices()
 {
     auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
 
-    m_sceneCB[frameIndex].cameraPosition = m_eye;
+	m_sceneCB[frameIndex].cameraPosition = m_camera.getEye();//m_eye;
     float fovAngleY = 45.0f;
-    XMMATRIX view = XMMatrixLookAtLH(m_eye, m_at, m_up);
+    XMMATRIX view = XMMatrixLookAtLH(m_camera.getEye(), m_camera.getTarget(), m_camera.getUp());
     XMMATRIX proj = XMMatrixPerspectiveFovLH(XMConvertToRadians(fovAngleY), m_aspectRatio, 1.0f, 125.0f);
     XMMATRIX viewProj = view * proj;
 
@@ -110,12 +110,20 @@ void D3D12RaytracingSimpleLighting::InitializeScene()
 
     // Setup camera.
     {
+		m_camera.setScreenInfo(m_width, m_height);
+		m_camera.setEye({ 0.0f, 2.0f, -5.0f, 1.0f });
+		m_camera.setLookAt({ 0.0f, 0.0f, 0.0f, 1.0f });
+
+		XMVECTOR right = { 1.0f, 0.0f, 0.0f, 0.0f };
+		XMVECTOR direction = XMVector4Normalize(m_camera.getLookAt() - m_camera.getEye());
+		m_camera.setUp(XMVector3Normalize(XMVector3Cross(direction, right)));
+
         // Initialize the view and projection inverse matrices.
         m_eye = { 0.0f, 2.0f, -5.0f, 1.0f };
         m_at = { 0.0f, 0.0f, 0.0f, 1.0f };
-        XMVECTOR right = { 1.0f, 0.0f, 0.0f, 0.0f };
+        //XMVECTOR right = { 1.0f, 0.0f, 0.0f, 0.0f };
 
-        XMVECTOR direction = XMVector4Normalize(m_at - m_eye);
+        //XMVECTOR direction = XMVector4Normalize(m_at - m_eye);
         m_up = XMVector3Normalize(XMVector3Cross(direction, right));
 
         // Rotate camera around Y axis.
@@ -788,14 +796,15 @@ void D3D12RaytracingSimpleLighting::OnUpdate()
     auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
     auto prevFrameIndex = m_deviceResources->GetPreviousFrameIndex();
 
-    // Rotate the camera around Y axis.
+    // Update camera.
     {
-        float secondsToRotateAround = 24.0f;
-        float angleToRotateBy = 360.0f * (elapsedTime / secondsToRotateAround);
-        XMMATRIX rotate = XMMatrixRotationY(XMConvertToRadians(angleToRotateBy));
-        m_eye = XMVector3Transform(m_eye, rotate);
-        m_up = XMVector3Transform(m_up, rotate);
-        m_at = XMVector3Transform(m_at, rotate);
+        //float secondsToRotateAround = 24.0f;
+        //float angleToRotateBy = 360.0f * (elapsedTime / secondsToRotateAround);
+        //XMMATRIX rotate = XMMatrixRotationY(XMConvertToRadians(angleToRotateBy));
+        //m_eye = XMVector3Transform(m_eye, rotate);
+        //m_up = XMVector3Transform(m_up, rotate);
+        //m_at = XMVector3Transform(m_at, rotate);
+		m_camera.update(elapsedTime);
         UpdateCameraMatrices();
     }
 
