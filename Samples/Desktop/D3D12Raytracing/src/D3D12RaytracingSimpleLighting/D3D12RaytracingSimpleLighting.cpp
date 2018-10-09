@@ -538,7 +538,7 @@ void D3D12RaytracingSimpleLighting::BuildAccelerationStructures()
     geometryDesc.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
     geometryDesc.Triangles.IndexBuffer = m_indexBuffer.resource->GetGPUVirtualAddress();
     geometryDesc.Triangles.IndexCount = static_cast<UINT>(m_indexBuffer.resource->GetDesc().Width) / sizeof(Index);
-    geometryDesc.Triangles.IndexFormat = DXGI_FORMAT_R32_UINT;
+    geometryDesc.Triangles.IndexFormat = DXGI_FORMAT_R16_UINT;
     geometryDesc.Triangles.Transform3x4 = 0;
     geometryDesc.Triangles.VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT;
     geometryDesc.Triangles.VertexCount = static_cast<UINT>(m_vertexBuffer.resource->GetDesc().Width) / sizeof(Vertex);
@@ -568,10 +568,10 @@ void D3D12RaytracingSimpleLighting::BuildAccelerationStructures()
 		D3D12_RAYTRACING_GEOMETRY_DESC geometryDesc = {};
 		geometryDesc.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
 		geometryDesc.Triangles.IndexBuffer = m_sponza->m_indexBuffer[i]->GetGPUVirtualAddress();
-		geometryDesc.Triangles.IndexCount = static_cast<UINT>(m_sponza->m_indexBuffer[i]->GetDesc().Width) / sizeof(UINT);
-		geometryDesc.Triangles.IndexFormat = DXGI_FORMAT_R32_UINT;
+		geometryDesc.Triangles.IndexCount = static_cast<UINT>(m_sponza->m_indexBuffer[i]->GetDesc().Width) / sizeof(Index);
+		geometryDesc.Triangles.IndexFormat = DXGI_FORMAT_R16_UINT; // Needs to match struct Index !
 		geometryDesc.Triangles.Transform3x4 = 0;
-		geometryDesc.Triangles.VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT;
+		geometryDesc.Triangles.VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT; // Needs to match struct Vertex !
 		geometryDesc.Triangles.VertexCount = static_cast<UINT>(m_sponza->m_vertexBuffer[i]->GetDesc().Width) / sizeof(Vertex);
 		geometryDesc.Triangles.VertexBuffer.StartAddress = m_sponza->m_vertexBuffer[i]->GetGPUVirtualAddress();
 		geometryDesc.Triangles.VertexBuffer.StrideInBytes = sizeof(Vertex);
@@ -591,7 +591,7 @@ void D3D12RaytracingSimpleLighting::BuildAccelerationStructures()
 	D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS &bottomLevelInputs = bottomLevelBuildDesc.Inputs;
 	bottomLevelInputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
 	bottomLevelInputs.Flags = buildFlags;
-	bottomLevelInputs.NumDescs = m_sponza->m_indexBuffer.size();
+	bottomLevelInputs.NumDescs = geometryDescs.size();
 	bottomLevelInputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
 	bottomLevelInputs.pGeometryDescs = geometryDescs.data();
 #endif

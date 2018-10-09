@@ -29,7 +29,7 @@ void Shape::loadMesh(const string & meshName, string * mtlpath)
 	{
 		m_obj_count = shapes.size();
 		m_vertBuf = new std::vector<Vertex>[m_obj_count];
-		m_indexBuf = new std::vector<UINT>[m_obj_count];
+		m_indexBuf = new std::vector<Index>[m_obj_count];
 		m_materialIDs.resize(m_obj_count);
 		for (int i = 0; i < m_obj_count; i++)
 		{
@@ -62,7 +62,8 @@ void Shape::loadMesh(const string & meshName, string * mtlpath)
 				}
 				m_vertBuf[i].push_back(vert);
 			}
-			m_indexBuf[i] = indices;
+			m_indexBuf[i] = std::vector<Index>(indices.begin(), indices.end());
+			//m_indexBuf[i] = indices;
 
 			if (shapes[i].mesh.material_ids.size() > 0) {
 				m_materialIDs[i] = shapes[i].mesh.material_ids[0];
@@ -343,7 +344,7 @@ void Shape::init(ComPtr<ID3D12Device> device,
 			m_vertexBufferUpload[i]);
 	
 		// Create necessary index buffers
-		const UINT indexBufferSize = m_indexBuf[i].size() * sizeof(UINT);
+		const UINT indexBufferSize = m_indexBuf[i].size() * sizeof(Index);
 		m_indexBuffer[i] = DX12Util::CreateDefaultBuffer(
 			device.Get(),
 			cmdList.Get(),
@@ -354,7 +355,24 @@ void Shape::init(ComPtr<ID3D12Device> device,
 }
 
 void Shape::finalizeInit() {
+	struct D3DBuffer
+	{
+		ComPtr<ID3D12Resource> resource;
+		D3D12_CPU_DESCRIPTOR_HANDLE cpuDescriptorHandle;
+		D3D12_GPU_DESCRIPTOR_HANDLE gpuDescriptorHandle;
+	};
+
+	m_indexD3DBuffer.resize(m_obj_count);
 	for (int i = 0; i < m_obj_count; i++) {
+		m_indexD3DBuffer[i].resource = m_indexBuffer[i];
+		m_vertexD3DBuffer.resource = m_vertexBuffer[i];
+
+		// Vertex buffer is passed to the shader along with index buffer as a descriptor table.
+		// Vertex buffer descriptor must follow index buffer descriptor in the descriptor heap.
+		UINT descriptorIndexIB = CreateBufferSRV(&m_indexD3DBuffer[i], sizeof(indices) / 4, 0);
+		UINT descriptorIndexVB = CreateBufferSRV(&m_vertexBuffer, ARRAYSIZE(vertices), sizeof(vertices[0]));
+		//ThrowIfFalse(descriptorIndexVB == descriptorIndexIB + 1, L"Vertex Buffer descriptor index must follow that of Index Buffer descriptor index!");
+
 		m_vertexBufferUpload[i] = nullptr;
 		m_indexBufferUpload[i] = nullptr;
 	}
@@ -376,10 +394,10 @@ void Shape::draw(ComPtr<ID3D12GraphicsCommandList> commandList,
 		vbv.StrideInBytes = sizeof(Vertex);
 		vbv.SizeInBytes = vertexBufferSize;
 
-		const UINT indexBufferSize = m_indexBuf[i].size() * sizeof(UINT);
+		const UINT indexBufferSize = m_indexBuf[i].size() * sizeof(Index);
 		D3D12_INDEX_BUFFER_VIEW ibv;
 		ibv.BufferLocation = m_indexBuffer[i]->GetGPUVirtualAddress();
-		ibv.Format = DXGI_FORMAT_R32_UINT;
+		ibv.Format = DXGI_FORMAT_R16_UINT; // Needs to match struct Index !
 		ibv.SizeInBytes = indexBufferSize;
 
 		// Use zero as the default index.

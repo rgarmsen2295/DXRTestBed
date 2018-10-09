@@ -35,7 +35,7 @@ uint3 Load3x16BitIndices(uint offsetBytes)
     // based on first index's offsetBytes being aligned at the 4 byte boundary or not:
     //  Aligned:     { 0 1 | 2 - }
     //  Not aligned: { - 0 | 1 2 }
-    const uint dwordAlignedOffset = offsetBytes & ~3;    
+    const uint dwordAlignedOffset = offsetBytes & ~3;
     const uint2 four16BitIndices = Indices.Load2(dwordAlignedOffset);
  
     // Aligned: { 0 1 | 2 - } => retrieve first three 16bit indices
@@ -100,7 +100,7 @@ float4 CalculateDiffuseLighting(float3 hitPosition, float3 normal)
     // Diffuse contribution.
     float fNDotL = max(0.0f, dot(pixelToLight, normal));
 
-    return g_cubeCB.albedo * g_sceneCB.lightDiffuseColor * fNDotL;
+    return /*g_cubeCB.albedo*/float4(1.0, 1.0, 1.0, 1.0) * float4(1.0, 1.0, 1.0, 1.0)/*g_sceneCB.lightDiffuseColor*/ * 1.0f/*NDotL*/;
 }
 
 [shader("raygeneration")]
@@ -140,12 +140,13 @@ void MyClosestHitShader(inout RayPayload payload, in MyAttributes attr)
     uint baseIndex = PrimitiveIndex() * triangleIndexStride;
 
     // Load up 3 16 bit indices for the triangle.
-    const uint3 indices = Indices.Load3(baseIndex); //Load3x16BitIndices(baseIndex);
+    const uint3 indices = Load3x16BitIndices(baseIndex);
 
     // Retrieve corresponding vertex normals for the triangle vertices.
-    float3 vertexNormals[3] = { 
-        Vertices[indices[0]].normal, 
-        Vertices[indices[1]].normal, 
+    float3 vertexNormals[3] =
+    {
+        Vertices[indices[0]].normal,
+        Vertices[indices[1]].normal,
         Vertices[indices[2]].normal 
     };
 

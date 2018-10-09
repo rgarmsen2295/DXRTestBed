@@ -48,7 +48,7 @@ private:
 
 	// CPU Resources
 	std::vector<Vertex> * m_vertBuf = nullptr;
-	std::vector<UINT> * m_indexBuf = nullptr;
+	std::vector<Index> * m_indexBuf = nullptr;
 
 	std::vector<Material> m_materials = std::vector<Material>();
 	std::vector<UINT> m_materialIDs = std::vector<UINT>();
