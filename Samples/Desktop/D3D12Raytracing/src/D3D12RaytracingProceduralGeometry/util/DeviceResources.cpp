@@ -248,7 +248,7 @@ void DeviceResources::CreateWindowSizeDependentResources()
     // Release resources that are tied to the swap chain and update fence values.
     for (UINT n = 0; n < m_backBufferCount; n++)
     {
-        m_renderTargets[n].Reset();
+        m_raytracingRenderTargets[n].Reset();
         m_fenceValues[n] = m_fenceValues[m_backBufferIndex];
     }
 
@@ -339,18 +339,18 @@ void DeviceResources::CreateWindowSizeDependentResources()
     // and create render target views for each of them.
     for (UINT n = 0; n < m_backBufferCount; n++)
     {
-        ThrowIfFailed(m_swapChain->GetBuffer(n, IID_PPV_ARGS(&m_renderTargets[n])));
+        ThrowIfFailed(m_swapChain->GetBuffer(n, IID_PPV_ARGS(&m_raytracingRenderTargets[n])));
 
         wchar_t name[25] = {};
         swprintf_s(name, L"Render target %u", n);
-        m_renderTargets[n]->SetName(name);
+        m_raytracingRenderTargets[n]->SetName(name);
 
         D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
         rtvDesc.Format = m_backBufferFormat;
         rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
 
         CD3DX12_CPU_DESCRIPTOR_HANDLE rtvDescriptor(m_rtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), n, m_rtvDescriptorSize);
-        m_d3dDevice->CreateRenderTargetView(m_renderTargets[n].Get(), &rtvDesc, rtvDescriptor);
+        m_d3dDevice->CreateRenderTargetView(m_raytracingRenderTargets[n].Get(), &rtvDesc, rtvDescriptor);
     }
 
     // Reset the index to the current back buffer.
@@ -454,7 +454,7 @@ void DeviceResources::HandleDeviceLost()
     for (UINT n = 0; n < m_backBufferCount; n++)
     {
         m_commandAllocators[n].Reset();
-        m_renderTargets[n].Reset();
+        m_raytracingRenderTargets[n].Reset();
     }
 
     m_depthStencil.Reset();
@@ -497,7 +497,7 @@ void DeviceResources::Prepare(D3D12_RESOURCE_STATES beforeState)
     if (beforeState != D3D12_RESOURCE_STATE_RENDER_TARGET)
     {
         // Transition the render target into the correct state to allow for drawing into it.
-        D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_backBufferIndex].Get(), beforeState, D3D12_RESOURCE_STATE_RENDER_TARGET);
+        D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_raytracingRenderTargets[m_backBufferIndex].Get(), beforeState, D3D12_RESOURCE_STATE_RENDER_TARGET);
         m_commandList->ResourceBarrier(1, &barrier);
     }
 }
@@ -508,7 +508,7 @@ void DeviceResources::Present(D3D12_RESOURCE_STATES beforeState)
     if (beforeState != D3D12_RESOURCE_STATE_PRESENT)
     {
         // Transition the render target to the state that allows it to be presented to the display.
-        D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_backBufferIndex].Get(), beforeState, D3D12_RESOURCE_STATE_PRESENT);
+        D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_raytracingRenderTargets[m_backBufferIndex].Get(), beforeState, D3D12_RESOURCE_STATE_PRESENT);
         m_commandList->ResourceBarrier(1, &barrier);
     }
 

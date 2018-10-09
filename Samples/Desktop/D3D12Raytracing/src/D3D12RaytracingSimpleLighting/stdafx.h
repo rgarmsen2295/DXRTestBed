@@ -53,4 +53,6 @@
 #include "DeviceResources.h"
 
 #include "Camera.h"
+#include "Shape.h"
 
+#include "DX12Util.h"

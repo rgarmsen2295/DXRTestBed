@@ -111,7 +111,7 @@ void D3D12RaytracingSimpleLighting::InitializeScene()
     // Setup camera.
     {
 		m_camera.setScreenInfo(m_width, m_height);
-		m_camera.setEye({ 0.0f, 2.0f, -5.0f, 1.0f });
+		m_camera.setEye({ 0.0f, 0.0f, -5.0f, 1.0f });
 		m_camera.setLookAt({ 0.0f, 0.0f, 0.0f, 1.0f });
 
 		XMVECTOR right = { 1.0f, 0.0f, 0.0f, 0.0f };
@@ -431,6 +431,12 @@ void D3D12RaytracingSimpleLighting::CreateDescriptorHeap()
 void D3D12RaytracingSimpleLighting::BuildGeometry()
 {
     auto device = m_deviceResources->GetD3DDevice();
+	auto commandList = m_deviceResources->GetCommandList();
+	auto commandQueue = m_deviceResources->GetCommandQueue();
+	auto commandAllocator = m_deviceResources->GetCommandAllocator();
+
+	// Reset the command list for the acceleration structure construction.
+	commandList->Reset(commandAllocator, nullptr);
 
     // Cube indices.
     Index indices[] =
@@ -496,6 +502,24 @@ void D3D12RaytracingSimpleLighting::BuildGeometry()
     UINT descriptorIndexIB = CreateBufferSRV(&m_indexBuffer, sizeof(indices)/4, 0);
     UINT descriptorIndexVB = CreateBufferSRV(&m_vertexBuffer, ARRAYSIZE(vertices), sizeof(vertices[0]));
     ThrowIfFalse(descriptorIndexVB == descriptorIndexIB + 1, L"Vertex Buffer descriptor index must follow that of Index Buffer descriptor index!");
+
+	m_sponza = std::make_shared<Shape>();
+
+	std::string resourcePath = "resources/";
+	std::string sponzaObj = resourcePath + "sponza.obj";
+
+	m_sponza->loadMesh(sponzaObj, &resourcePath);
+	m_sponza->resize();
+	m_sponza->init(device, commandList);
+
+	// Kick off acceleration structure construction.
+	m_deviceResources->ExecuteCommandList();
+
+	// Wait for GPU to finish as the locally created temporary GPU resources will get released once we go out of scope.
+	m_deviceResources->WaitForGpu();
+
+	// Clean-up upload buffers.
+	m_sponza->finalizeInit();
 }
 
 // Build acceleration structures needed for raytracing.
@@ -509,11 +533,12 @@ void D3D12RaytracingSimpleLighting::BuildAccelerationStructures()
     // Reset the command list for the acceleration structure construction.
     commandList->Reset(commandAllocator, nullptr);
 
+#ifdef SHOW_CUBE
     D3D12_RAYTRACING_GEOMETRY_DESC geometryDesc = {};
     geometryDesc.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
     geometryDesc.Triangles.IndexBuffer = m_indexBuffer.resource->GetGPUVirtualAddress();
     geometryDesc.Triangles.IndexCount = static_cast<UINT>(m_indexBuffer.resource->GetDesc().Width) / sizeof(Index);
-    geometryDesc.Triangles.IndexFormat = DXGI_FORMAT_R16_UINT;
+    geometryDesc.Triangles.IndexFormat = DXGI_FORMAT_R32_UINT;
     geometryDesc.Triangles.Transform3x4 = 0;
     geometryDesc.Triangles.VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT;
     geometryDesc.Triangles.VertexCount = static_cast<UINT>(m_vertexBuffer.resource->GetDesc().Width) / sizeof(Vertex);
@@ -535,6 +560,41 @@ void D3D12RaytracingSimpleLighting::BuildAccelerationStructures()
     bottomLevelInputs.NumDescs = 1;
     bottomLevelInputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
     bottomLevelInputs.pGeometryDescs = &geometryDesc;
+#else
+	std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> geometryDescs;
+
+	for (int i = 0; i < m_sponza->m_indexBuffer.size(); i++)
+	{
+		D3D12_RAYTRACING_GEOMETRY_DESC geometryDesc = {};
+		geometryDesc.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
+		geometryDesc.Triangles.IndexBuffer = m_sponza->m_indexBuffer[i]->GetGPUVirtualAddress();
+		geometryDesc.Triangles.IndexCount = static_cast<UINT>(m_sponza->m_indexBuffer[i]->GetDesc().Width) / sizeof(UINT);
+		geometryDesc.Triangles.IndexFormat = DXGI_FORMAT_R32_UINT;
+		geometryDesc.Triangles.Transform3x4 = 0;
+		geometryDesc.Triangles.VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT;
+		geometryDesc.Triangles.VertexCount = static_cast<UINT>(m_sponza->m_vertexBuffer[i]->GetDesc().Width) / sizeof(Vertex);
+		geometryDesc.Triangles.VertexBuffer.StartAddress = m_sponza->m_vertexBuffer[i]->GetGPUVirtualAddress();
+		geometryDesc.Triangles.VertexBuffer.StrideInBytes = sizeof(Vertex);
+
+		// Mark the geometry as opaque. 
+		// PERFORMANCE TIP: mark geometry as opaque whenever applicable as it can enable important ray processing optimizations.
+		// Note: When rays encounter opaque geometry an any hit shader will not be executed whether it is present or not.
+		geometryDesc.Flags = D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE;
+
+		geometryDescs.push_back(geometryDesc);
+	}
+
+	// Get required sizes for an acceleration structure.
+	D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;
+
+	D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC bottomLevelBuildDesc = {};
+	D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS &bottomLevelInputs = bottomLevelBuildDesc.Inputs;
+	bottomLevelInputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+	bottomLevelInputs.Flags = buildFlags;
+	bottomLevelInputs.NumDescs = m_sponza->m_indexBuffer.size();
+	bottomLevelInputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
+	bottomLevelInputs.pGeometryDescs = geometryDescs.data();
+#endif
 
     D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC topLevelBuildDesc = bottomLevelBuildDesc;
     D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS &topLevelInputs = topLevelBuildDesc.Inputs;
