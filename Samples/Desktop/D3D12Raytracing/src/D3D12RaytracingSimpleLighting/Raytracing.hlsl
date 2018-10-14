@@ -17,43 +17,44 @@
 
 RaytracingAccelerationStructure Scene : register(t0, space0);
 RWTexture2D<float4> RenderTarget : register(u0);
-ByteAddressBuffer Indices : register(t1, space0);
+//ByteAddressBuffer Indices : register(t1, space0);
+StructuredBuffer<UINT> Indices : register(t1, space0);
 StructuredBuffer<Vertex> Vertices : register(t2, space0);
 
 ConstantBuffer<SceneConstantBuffer> g_sceneCB : register(b0);
 ConstantBuffer<CubeConstantBuffer> g_cubeCB : register(b1);
 
 // Load three 16 bit indices from a byte addressed buffer.
-uint3 Load3x16BitIndices(uint offsetBytes)
-{
-    uint3 indices;
+//uint3 Load3x16BitIndices(uint offsetBytes)
+//{
+//    uint3 indices;
 
-    // ByteAdressBuffer loads must be aligned at a 4 byte boundary.
-    // Since we need to read three 16 bit indices: { 0, 1, 2 } 
-    // aligned at a 4 byte boundary as: { 0 1 } { 2 0 } { 1 2 } { 0 1 } ...
-    // we will load 8 bytes (~ 4 indices { a b | c d }) to handle two possible index triplet layouts,
-    // based on first index's offsetBytes being aligned at the 4 byte boundary or not:
-    //  Aligned:     { 0 1 | 2 - }
-    //  Not aligned: { - 0 | 1 2 }
-    const uint dwordAlignedOffset = offsetBytes & ~3;
-    const uint2 four16BitIndices = Indices.Load2(dwordAlignedOffset);
+//    // ByteAdressBuffer loads must be aligned at a 4 byte boundary.
+//    // Since we need to read three 16 bit indices: { 0, 1, 2 } 
+//    // aligned at a 4 byte boundary as: { 0 1 } { 2 0 } { 1 2 } { 0 1 } ...
+//    // we will load 8 bytes (~ 4 indices { a b | c d }) to handle two possible index triplet layouts,
+//    // based on first index's offsetBytes being aligned at the 4 byte boundary or not:
+//    //  Aligned:     { 0 1 | 2 - }
+//    //  Not aligned: { - 0 | 1 2 }
+//    const uint dwordAlignedOffset = offsetBytes & ~3;
+//    const uint2 four16BitIndices = Indices.Load2(dwordAlignedOffset);
  
-    // Aligned: { 0 1 | 2 - } => retrieve first three 16bit indices
-    if (dwordAlignedOffset == offsetBytes)
-    {
-        indices.x = four16BitIndices.x & 0xffff;
-        indices.y = (four16BitIndices.x >> 16) & 0xffff;
-        indices.z = four16BitIndices.y & 0xffff;
-    }
-    else // Not aligned: { - 0 | 1 2 } => retrieve last three 16bit indices
-    {
-        indices.x = (four16BitIndices.x >> 16) & 0xffff;
-        indices.y = four16BitIndices.y & 0xffff;
-        indices.z = (four16BitIndices.y >> 16) & 0xffff;
-    }
+//    // Aligned: { 0 1 | 2 - } => retrieve first three 16bit indices
+//    if (dwordAlignedOffset == offsetBytes)
+//    {
+//        indices.x = four16BitIndices.x & 0xffff;
+//        indices.y = (four16BitIndices.x >> 16) & 0xffff;
+//        indices.z = four16BitIndices.y & 0xffff;
+//    }
+//    else // Not aligned: { - 0 | 1 2 } => retrieve last three 16bit indices
+//    {
+//        indices.x = (four16BitIndices.x >> 16) & 0xffff;
+//        indices.y = four16BitIndices.y & 0xffff;
+//        indices.z = (four16BitIndices.y >> 16) & 0xffff;
+//    }
 
-    return indices;
-}
+//    return indices;
+//}
 
 typedef BuiltInTriangleIntersectionAttributes MyAttributes;
 struct RayPayload
@@ -100,7 +101,7 @@ float4 CalculateDiffuseLighting(float3 hitPosition, float3 normal)
     // Diffuse contribution.
     float fNDotL = max(0.0f, dot(pixelToLight, normal));
 
-    return /*g_cubeCB.albedo*/float4(1.0, 1.0, 1.0, 1.0) * float4(1.0, 1.0, 1.0, 1.0)/*g_sceneCB.lightDiffuseColor*/ * 1.0f/*NDotL*/;
+    return g_cubeCB.albedo * g_sceneCB.lightDiffuseColor * fNDotL;
 }
 
 [shader("raygeneration")]
@@ -134,13 +135,14 @@ void MyClosestHitShader(inout RayPayload payload, in MyAttributes attr)
     float3 hitPosition = HitWorldPosition();
 
     // Get the base index of the triangle's first 16 bit index.
-    uint indexSizeInBytes = 2;
-    uint indicesPerTriangle = 3;
-    uint triangleIndexStride = indicesPerTriangle * indexSizeInBytes;
-    uint baseIndex = PrimitiveIndex() * triangleIndexStride;
+    //uint indexSizeInBytes = 2;
+    //uint indicesPerTriangle = 3;
+    //uint triangleIndexStride = indicesPerTriangle * indexSizeInBytes;
+    uint baseIndex = PrimitiveIndex() * 3;//triangleIndexStride;
 
     // Load up 3 16 bit indices for the triangle.
-    const uint3 indices = Load3x16BitIndices(baseIndex);
+    //const uint3 indices = Load3x16BitIndices(baseIndex);
+    const uint3 indices = { Indices[baseIndex], Indices[baseIndex + 1], Indices[baseIndex + 2] };
 
     // Retrieve corresponding vertex normals for the triangle vertices.
     float3 vertexNormals[3] =

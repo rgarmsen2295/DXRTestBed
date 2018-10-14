@@ -362,15 +362,15 @@ void Shape::finalizeInit() {
 		D3D12_GPU_DESCRIPTOR_HANDLE gpuDescriptorHandle;
 	};
 
-	m_indexD3DBuffer.resize(m_obj_count);
+	//m_indexD3DBuffer.resize(m_obj_count);
 	for (int i = 0; i < m_obj_count; i++) {
-		m_indexD3DBuffer[i].resource = m_indexBuffer[i];
-		m_vertexD3DBuffer.resource = m_vertexBuffer[i];
+		//m_indexD3DBuffer[i].resource = m_indexBuffer[i];
+		//m_vertexD3DBuffer.resource = m_vertexBuffer[i];
 
 		// Vertex buffer is passed to the shader along with index buffer as a descriptor table.
 		// Vertex buffer descriptor must follow index buffer descriptor in the descriptor heap.
-		UINT descriptorIndexIB = CreateBufferSRV(&m_indexD3DBuffer[i], sizeof(indices) / 4, 0);
-		UINT descriptorIndexVB = CreateBufferSRV(&m_vertexBuffer, ARRAYSIZE(vertices), sizeof(vertices[0]));
+		//UINT descriptorIndexIB = CreateBufferSRV(&m_indexD3DBuffer[i], sizeof(indices) / 4, 0);
+		//UINT descriptorIndexVB = CreateBufferSRV(&m_vertexBuffer, ARRAYSIZE(vertices), sizeof(vertices[0]));
 		//ThrowIfFalse(descriptorIndexVB == descriptorIndexIB + 1, L"Vertex Buffer descriptor index must follow that of Index Buffer descriptor index!");
 
 		m_vertexBufferUpload[i] = nullptr;
