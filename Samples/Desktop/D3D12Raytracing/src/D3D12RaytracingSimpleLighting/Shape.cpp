@@ -336,7 +336,7 @@ void Shape::init(ComPtr<ID3D12Device> device,
 	{
 		// Create necessary vertex buffers
 		const UINT vertexBufferSize = m_vertBuf[i].size() * sizeof(Vertex);
-		m_vertexBuffer[i] = DX12Util::CreateDefaultBuffer(
+		m_vertexBuffer[i].resource = DX12Util::CreateDefaultBuffer(
 			device.Get(),
 			cmdList.Get(),
 			m_vertBuf[i].data(),
@@ -345,7 +345,7 @@ void Shape::init(ComPtr<ID3D12Device> device,
 	
 		// Create necessary index buffers
 		const UINT indexBufferSize = m_indexBuf[i].size() * sizeof(Index);
-		m_indexBuffer[i] = DX12Util::CreateDefaultBuffer(
+		m_indexBuffer[i].resource = DX12Util::CreateDefaultBuffer(
 			device.Get(),
 			cmdList.Get(),
 			m_indexBuf[i].data(),
@@ -355,24 +355,7 @@ void Shape::init(ComPtr<ID3D12Device> device,
 }
 
 void Shape::finalizeInit() {
-	struct D3DBuffer
-	{
-		ComPtr<ID3D12Resource> resource;
-		D3D12_CPU_DESCRIPTOR_HANDLE cpuDescriptorHandle;
-		D3D12_GPU_DESCRIPTOR_HANDLE gpuDescriptorHandle;
-	};
-
-	//m_indexD3DBuffer.resize(m_obj_count);
 	for (int i = 0; i < m_obj_count; i++) {
-		//m_indexD3DBuffer[i].resource = m_indexBuffer[i];
-		//m_vertexD3DBuffer.resource = m_vertexBuffer[i];
-
-		// Vertex buffer is passed to the shader along with index buffer as a descriptor table.
-		// Vertex buffer descriptor must follow index buffer descriptor in the descriptor heap.
-		//UINT descriptorIndexIB = CreateBufferSRV(&m_indexD3DBuffer[i], sizeof(indices) / 4, 0);
-		//UINT descriptorIndexVB = CreateBufferSRV(&m_vertexBuffer, ARRAYSIZE(vertices), sizeof(vertices[0]));
-		//ThrowIfFalse(descriptorIndexVB == descriptorIndexIB + 1, L"Vertex Buffer descriptor index must follow that of Index Buffer descriptor index!");
-
 		m_vertexBufferUpload[i] = nullptr;
 		m_indexBufferUpload[i] = nullptr;
 	}
@@ -390,13 +373,13 @@ void Shape::draw(ComPtr<ID3D12GraphicsCommandList> commandList,
 		// Get the vertex and index buffer views
 		const UINT vertexBufferSize = m_vertBuf[i].size() * sizeof(Vertex);
 		D3D12_VERTEX_BUFFER_VIEW vbv;
-		vbv.BufferLocation = m_vertexBuffer[i]->GetGPUVirtualAddress();
+		vbv.BufferLocation = m_vertexBuffer[i].resource->GetGPUVirtualAddress();
 		vbv.StrideInBytes = sizeof(Vertex);
 		vbv.SizeInBytes = vertexBufferSize;
 
 		const UINT indexBufferSize = m_indexBuf[i].size() * sizeof(Index);
 		D3D12_INDEX_BUFFER_VIEW ibv;
-		ibv.BufferLocation = m_indexBuffer[i]->GetGPUVirtualAddress();
+		ibv.BufferLocation = m_indexBuffer[i].resource->GetGPUVirtualAddress();
 		ibv.Format = DXGI_FORMAT_R16_UINT; // Needs to match struct Index !
 		ibv.SizeInBytes = indexBufferSize;
 

@@ -39,17 +39,16 @@ public:
 
 	// CPU Resources
 	int m_obj_count = 0;
+	std::vector<Vertex> * m_vertBuf = nullptr;
+	std::vector<Index> * m_indexBuf = nullptr;
 
 	// GPU Resources
-	std::vector<ComPtr<ID3D12Resource>> m_vertexBuffer = std::vector<ComPtr<ID3D12Resource>>();
-	std::vector<ComPtr<ID3D12Resource>> m_indexBuffer = std::vector<ComPtr<ID3D12Resource>>();
+	std::vector<D3DBuffer> m_vertexBuffer = std::vector<D3DBuffer>();
+	std::vector<D3DBuffer> m_indexBuffer = std::vector<D3DBuffer>();
 
 private:
 
 	// CPU Resources
-	std::vector<Vertex> * m_vertBuf = nullptr;
-	std::vector<Index> * m_indexBuf = nullptr;
-
 	std::vector<Material> m_materials = std::vector<Material>();
 	std::vector<UINT> m_materialIDs = std::vector<UINT>();
 	std::vector<UINT> m_textureIDs = std::vector<UINT>();

@@ -199,11 +199,11 @@ void D3D12RaytracingSimpleLighting::CreateDeviceDependentResources()
     // Create a raytracing pipeline state object which defines the binding of shaders, state and resources to be used during raytracing.
     CreateRaytracingPipelineStateObject();
 
+	// Build geometry to be used in the sample.
+	BuildGeometry();
+
     // Create a heap for descriptors.
     CreateDescriptorHeap();
-
-    // Build geometry to be used in the sample.
-    BuildGeometry();
 
     // Build raytracing acceleration structures from the generated geometry.
     BuildAccelerationStructures();
@@ -243,15 +243,14 @@ void D3D12RaytracingSimpleLighting::CreateRootSignatures()
     // Global Root Signature
     // This is a root signature that is shared across all raytracing shaders invoked during a DispatchRays() call.
     {
-        CD3DX12_DESCRIPTOR_RANGE ranges[2]; // Perfomance TIP: Order from most frequent to least frequent.
+        CD3DX12_DESCRIPTOR_RANGE ranges[1]; // Perfomance TIP: Order from most frequent to least frequent.
         ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
-        ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 1);  // 2 static index and vertex buffers.
 
         CD3DX12_ROOT_PARAMETER rootParameters[GlobalRootSignatureParams::Count];
         rootParameters[GlobalRootSignatureParams::OutputViewSlot].InitAsDescriptorTable(1, &ranges[0]);
         rootParameters[GlobalRootSignatureParams::AccelerationStructureSlot].InitAsShaderResourceView(0);
         rootParameters[GlobalRootSignatureParams::SceneConstantSlot].InitAsConstantBufferView(0);
-        rootParameters[GlobalRootSignatureParams::VertexBuffersSlot].InitAsDescriptorTable(1, &ranges[1]);
+
         CD3DX12_ROOT_SIGNATURE_DESC globalRootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
         SerializeAndCreateRaytracingRootSignature(globalRootSignatureDesc, &m_raytracingGlobalRootSignature);
     }
@@ -259,8 +258,13 @@ void D3D12RaytracingSimpleLighting::CreateRootSignatures()
     // Local Root Signature
     // This is a root signature that enables a shader to have unique arguments that come from shader tables.
     {
+		CD3DX12_DESCRIPTOR_RANGE ranges[1]; // Perfomance TIP: Order from most frequent to least frequent.
+		ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 1);  // 2 static index and vertex buffers.
+
         CD3DX12_ROOT_PARAMETER rootParameters[LocalRootSignatureParams::Count];
         rootParameters[LocalRootSignatureParams::CubeConstantSlot].InitAsConstants(SizeOfInUint32(m_cubeCB), 1);
+		rootParameters[LocalRootSignatureParams::VertexBuffers].InitAsDescriptorTable(1, &ranges[0]);
+
         CD3DX12_ROOT_SIGNATURE_DESC localRootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
         localRootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE;
         SerializeAndCreateRaytracingRootSignature(localRootSignatureDesc, &m_raytracingLocalRootSignature);
@@ -408,101 +412,19 @@ void D3D12RaytracingSimpleLighting::CreateRaytracingOutputResource()
     m_raytracingOutputResourceUAVGpuDescriptor = CD3DX12_GPU_DESCRIPTOR_HANDLE(m_descriptorHeap->GetGPUDescriptorHandleForHeapStart(), m_raytracingOutputResourceUAVDescriptorHeapIndex, m_descriptorSize);
 }
 
-void D3D12RaytracingSimpleLighting::CreateDescriptorHeap()
-{
-    auto device = m_deviceResources->GetD3DDevice();
-
-    D3D12_DESCRIPTOR_HEAP_DESC descriptorHeapDesc = {};
-    // Allocate a heap for 5 descriptors:
-    // 2 - vertex and index buffer SRVs
-    // 1 - raytracing output texture SRV
-    // 2 - bottom and top level acceleration structure fallback wrapped pointer UAVs
-    descriptorHeapDesc.NumDescriptors = 5; 
-    descriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-    descriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-    descriptorHeapDesc.NodeMask = 0;
-    device->CreateDescriptorHeap(&descriptorHeapDesc, IID_PPV_ARGS(&m_descriptorHeap));
-    NAME_D3D12_OBJECT(m_descriptorHeap);
-
-    m_descriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-}
-
 // Build geometry used in the sample.
 void D3D12RaytracingSimpleLighting::BuildGeometry()
 {
-    auto device = m_deviceResources->GetD3DDevice();
+	auto device = m_deviceResources->GetD3DDevice();
 	auto commandList = m_deviceResources->GetCommandList();
 	auto commandQueue = m_deviceResources->GetCommandQueue();
 	auto commandAllocator = m_deviceResources->GetCommandAllocator();
 
-	// Reset the command list for the acceleration structure construction.
-	commandList->Reset(commandAllocator, nullptr);
-
-    // Cube indices.
-    Index indices[] =
-    {
-        3,1,0,
-        2,1,3,
-
-        6,4,5,
-        7,4,6,
-
-        11,9,8,
-        10,9,11,
-
-        14,12,13,
-        15,12,14,
-
-        19,17,16,
-        18,17,19,
-
-        22,20,21,
-        23,20,22
-    };
-
-    // Cube vertices positions and corresponding triangle normals.
-    Vertex vertices[] =
-    {
-        { XMFLOAT3(-1.0f, 1.0f, -1.0f), XMFLOAT3(0.0f, 1.0f, 0.0f) },
-        { XMFLOAT3(1.0f, 1.0f, -1.0f), XMFLOAT3(0.0f, 1.0f, 0.0f) },
-        { XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 1.0f, 0.0f) },
-        { XMFLOAT3(-1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 1.0f, 0.0f) },
-
-        { XMFLOAT3(-1.0f, -1.0f, -1.0f), XMFLOAT3(0.0f, -1.0f, 0.0f) },
-        { XMFLOAT3(1.0f, -1.0f, -1.0f), XMFLOAT3(0.0f, -1.0f, 0.0f) },
-        { XMFLOAT3(1.0f, -1.0f, 1.0f), XMFLOAT3(0.0f, -1.0f, 0.0f) },
-        { XMFLOAT3(-1.0f, -1.0f, 1.0f), XMFLOAT3(0.0f, -1.0f, 0.0f) },
-
-        { XMFLOAT3(-1.0f, -1.0f, 1.0f), XMFLOAT3(-1.0f, 0.0f, 0.0f) },
-        { XMFLOAT3(-1.0f, -1.0f, -1.0f), XMFLOAT3(-1.0f, 0.0f, 0.0f) },
-        { XMFLOAT3(-1.0f, 1.0f, -1.0f), XMFLOAT3(-1.0f, 0.0f, 0.0f) },
-        { XMFLOAT3(-1.0f, 1.0f, 1.0f), XMFLOAT3(-1.0f, 0.0f, 0.0f) },
-
-        { XMFLOAT3(1.0f, -1.0f, 1.0f), XMFLOAT3(1.0f, 0.0f, 0.0f) },
-        { XMFLOAT3(1.0f, -1.0f, -1.0f), XMFLOAT3(1.0f, 0.0f, 0.0f) },
-        { XMFLOAT3(1.0f, 1.0f, -1.0f), XMFLOAT3(1.0f, 0.0f, 0.0f) },
-        { XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(1.0f, 0.0f, 0.0f) },
-
-        { XMFLOAT3(-1.0f, -1.0f, -1.0f), XMFLOAT3(0.0f, 0.0f, -1.0f) },
-        { XMFLOAT3(1.0f, -1.0f, -1.0f), XMFLOAT3(0.0f, 0.0f, -1.0f) },
-        { XMFLOAT3(1.0f, 1.0f, -1.0f), XMFLOAT3(0.0f, 0.0f, -1.0f) },
-        { XMFLOAT3(-1.0f, 1.0f, -1.0f), XMFLOAT3(0.0f, 0.0f, -1.0f) },
-
-        { XMFLOAT3(-1.0f, -1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 1.0f) },
-        { XMFLOAT3(1.0f, -1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 1.0f) },
-        { XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 1.0f) },
-        { XMFLOAT3(-1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 1.0f) },
-    };
-
-    AllocateUploadBuffer(device, indices, sizeof(indices), &m_indexBuffer.resource);
-    AllocateUploadBuffer(device, vertices, sizeof(vertices), &m_vertexBuffer.resource);
-
-    // Vertex buffer is passed to the shader along with index buffer as a descriptor table.
-    // Vertex buffer descriptor must follow index buffer descriptor in the descriptor heap.
-    UINT descriptorIndexIB = CreateBufferSRV(&m_indexBuffer, sizeof(indices)/4, 0);
-    UINT descriptorIndexVB = CreateBufferSRV(&m_vertexBuffer, ARRAYSIZE(vertices), sizeof(vertices[0]));
-    ThrowIfFalse(descriptorIndexVB == descriptorIndexIB + 1, L"Vertex Buffer descriptor index must follow that of Index Buffer descriptor index!");
-
+//#define SHOW_CUBE
+#ifdef SHOW_CUBE
+	AllocateUploadBuffer(device, m_cubeIndices, sizeof(m_cubeIndices), &m_cubeIndexBuffer.resource);
+	AllocateUploadBuffer(device, m_cubeVertices, sizeof(m_cubeVertices), &m_cubeVertexBuffer.resource);
+#else
 	m_sponza = std::make_shared<Shape>();
 
 	std::string resourcePath = "resources/";
@@ -510,6 +432,45 @@ void D3D12RaytracingSimpleLighting::BuildGeometry()
 
 	m_sponza->loadMesh(sponzaObj, &resourcePath);
 	m_sponza->resize();
+#endif
+}
+
+void D3D12RaytracingSimpleLighting::CreateDescriptorHeap()
+{
+    auto device = m_deviceResources->GetD3DDevice();
+	auto commandList = m_deviceResources->GetCommandList();
+	auto commandQueue = m_deviceResources->GetCommandQueue();
+	auto commandAllocator = m_deviceResources->GetCommandAllocator();
+
+    D3D12_DESCRIPTOR_HEAP_DESC descriptorHeapDesc = {};
+    // Allocate a heap for 5 descriptors:
+    // numGeometry * 2 - vertex and index buffer SRVs
+    // 1 - raytracing output texture SRV
+    // 2 - bottom and top level acceleration structure fallback wrapped pointer UAVs
+#ifdef SHOW_CUBE
+	UINT numGeometry = 1;
+#else
+	UINT numGeometry = m_sponza->m_obj_count;
+#endif
+	descriptorHeapDesc.NumDescriptors = numGeometry * 2 + 3;
+    descriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+    descriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+    descriptorHeapDesc.NodeMask = 0;
+    device->CreateDescriptorHeap(&descriptorHeapDesc, IID_PPV_ARGS(&m_descriptorHeap));
+    NAME_D3D12_OBJECT(m_descriptorHeap);
+
+    m_descriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+	// Vertex buffer is passed to the shader along with index buffer as a descriptor table.
+	// Vertex buffer descriptor must follow index buffer descriptor in the descriptor heap.
+#ifdef SHOW_CUBE
+	UINT descriptorIndexIB = CreateBufferSRV(&m_cubeIndexBuffer, ARRAYSIZE(m_cubeIndices), sizeof(m_cubeIndices[0]));
+	UINT descriptorIndexVB = CreateBufferSRV(&m_cubeVertexBuffer, ARRAYSIZE(m_cubeVertices), sizeof(m_cubeVertices[0]));
+	ThrowIfFalse(descriptorIndexVB == descriptorIndexIB + 1, L"Vertex Buffer descriptor index must follow that of Index Buffer descriptor index!");
+#else
+	// Reset the command list for the acceleration structure construction.
+	commandList->Reset(commandAllocator, nullptr);
+
 	m_sponza->init(device, commandList);
 
 	// Kick off acceleration structure construction.
@@ -518,8 +479,16 @@ void D3D12RaytracingSimpleLighting::BuildGeometry()
 	// Wait for GPU to finish as the locally created temporary GPU resources will get released once we go out of scope.
 	m_deviceResources->WaitForGpu();
 
+	for (int i = 0; i < m_sponza->m_obj_count; i++)
+	{
+		UINT descriptorIndexIB = CreateBufferSRV(&m_sponza->m_indexBuffer[i], m_sponza->m_indexBuf[i].size(), sizeof(m_sponza->m_indexBuf[i][0]));
+		UINT descriptorIndexVB = CreateBufferSRV(&m_sponza->m_vertexBuffer[i], m_sponza->m_vertBuf[i].size(), sizeof(m_sponza->m_vertBuf[i][0]));
+		ThrowIfFalse(descriptorIndexVB == descriptorIndexIB + 1, L"Vertex Buffer descriptor index must follow that of Index Buffer descriptor index!");
+	}
+	
 	// Clean-up upload buffers.
 	m_sponza->finalizeInit();
+#endif
 }
 
 // Build acceleration structures needed for raytracing.
@@ -532,17 +501,17 @@ void D3D12RaytracingSimpleLighting::BuildAccelerationStructures()
 
     // Reset the command list for the acceleration structure construction.
     commandList->Reset(commandAllocator, nullptr);
-#define SHOW_CUBE
+
 #ifdef SHOW_CUBE
     D3D12_RAYTRACING_GEOMETRY_DESC geometryDesc = {};
     geometryDesc.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
-    geometryDesc.Triangles.IndexBuffer = m_indexBuffer.resource->GetGPUVirtualAddress();
-    geometryDesc.Triangles.IndexCount = static_cast<UINT>(m_indexBuffer.resource->GetDesc().Width) / sizeof(Index);
+    geometryDesc.Triangles.IndexBuffer = m_cubeIndexBuffer.resource->GetGPUVirtualAddress();
+    geometryDesc.Triangles.IndexCount = static_cast<UINT>(m_cubeIndexBuffer.resource->GetDesc().Width) / sizeof(Index);
     geometryDesc.Triangles.IndexFormat = DXGI_FORMAT_R32_UINT;
     geometryDesc.Triangles.Transform3x4 = 0;
     geometryDesc.Triangles.VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT;
-    geometryDesc.Triangles.VertexCount = static_cast<UINT>(m_vertexBuffer.resource->GetDesc().Width) / sizeof(Vertex);
-    geometryDesc.Triangles.VertexBuffer.StartAddress = m_vertexBuffer.resource->GetGPUVirtualAddress();
+    geometryDesc.Triangles.VertexCount = static_cast<UINT>(m_cubeVertexBuffer.resource->GetDesc().Width) / sizeof(Vertex);
+    geometryDesc.Triangles.VertexBuffer.StartAddress = m_cubeVertexBuffer.resource->GetGPUVirtualAddress();
     geometryDesc.Triangles.VertexBuffer.StrideInBytes = sizeof(Vertex);
 
     // Mark the geometry as opaque. 
@@ -563,17 +532,17 @@ void D3D12RaytracingSimpleLighting::BuildAccelerationStructures()
 #else
 	std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> geometryDescs;
 
-	for (int i = 0; i < m_sponza->m_indexBuffer.size(); i++)
+	for (int i = 0; i < m_sponza->m_obj_count; i++)
 	{
 		D3D12_RAYTRACING_GEOMETRY_DESC geometryDesc = {};
 		geometryDesc.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
-		geometryDesc.Triangles.IndexBuffer = m_sponza->m_indexBuffer[i]->GetGPUVirtualAddress();
-		geometryDesc.Triangles.IndexCount = static_cast<UINT>(m_sponza->m_indexBuffer[i]->GetDesc().Width) / sizeof(Index);
+		geometryDesc.Triangles.IndexBuffer = m_sponza->m_indexBuffer[i].resource->GetGPUVirtualAddress();
+		geometryDesc.Triangles.IndexCount = static_cast<UINT>(m_sponza->m_indexBuffer[i].resource->GetDesc().Width) / sizeof(Index);
 		geometryDesc.Triangles.IndexFormat = DXGI_FORMAT_R32_UINT; // Needs to match struct Index !
 		geometryDesc.Triangles.Transform3x4 = 0;
 		geometryDesc.Triangles.VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT; // Needs to match struct Vertex !
-		geometryDesc.Triangles.VertexCount = static_cast<UINT>(m_sponza->m_vertexBuffer[i]->GetDesc().Width) / sizeof(Vertex);
-		geometryDesc.Triangles.VertexBuffer.StartAddress = m_sponza->m_vertexBuffer[i]->GetGPUVirtualAddress();
+		geometryDesc.Triangles.VertexCount = static_cast<UINT>(m_sponza->m_vertexBuffer[i].resource->GetDesc().Width) / sizeof(Vertex);
+		geometryDesc.Triangles.VertexBuffer.StartAddress = m_sponza->m_vertexBuffer[i].resource->GetGPUVirtualAddress();
 		geometryDesc.Triangles.VertexBuffer.StrideInBytes = sizeof(Vertex);
 
 		// Mark the geometry as opaque. 
@@ -783,17 +752,31 @@ void D3D12RaytracingSimpleLighting::BuildShaderTables()
     {
         struct RootArguments {
             CubeConstantBuffer cb;
+			D3D12_GPU_DESCRIPTOR_HANDLE vertexBufferGPUHandle;
         } rootArguments;
-        rootArguments.cb = m_cubeCB;
 
-        UINT numShaderRecords = 1;
+#ifdef SHOW_CUBE
+		rootArguments.cb = m_cubeCB;
+		UINT numShaderRecords = 1;
+#else
+		rootArguments.cb = m_cubeCB;
+		UINT numShaderRecords = m_sponza->m_obj_count;
+#endif
         UINT shaderRecordSize = shaderIdentifierSize + sizeof(rootArguments);
         ShaderTable hitGroupShaderTable(device, numShaderRecords, shaderRecordSize, L"HitGroupShaderTable");
-		//for (int i = 0; i < numShaderRecords; i++) {
-		hitGroupShaderTable.push_back(ShaderRecord(hitGroupShaderIdentifier, shaderIdentifierSize, &rootArguments, sizeof(rootArguments)));
-		//}
+		for (int i = 0; i < numShaderRecords; i++) {
+#ifdef SHOW_CUBE
+			//memcpy(&rootArguments.vertexBufferGPUHandle, &m_indexBuffer.gpuDescriptorHandle, sizeof(m_indexBuffer.gpuDescriptorHandle));
+			rootArguments.vertexBufferGPUHandle = m_cubeIndexBuffer.gpuDescriptorHandle;
+#else
+			rootArguments.vertexBufferGPUHandle = m_sponza->m_indexBuffer[i].gpuDescriptorHandle;
+#endif
+			hitGroupShaderTable.push_back(ShaderRecord(hitGroupShaderIdentifier, shaderIdentifierSize, &rootArguments, sizeof(rootArguments)));
+		}
         
         m_hitGroupShaderTable = hitGroupShaderTable.GetResource();
+		m_hitGroupShaderTableStrideInBytes = hitGroupShaderTable.GetShaderRecordSize();
+		//hitGroupShaderTable.DebugPrint(shaderIdToStringMap);
     }
 }
 
@@ -911,7 +894,7 @@ void D3D12RaytracingSimpleLighting::DoRaytracing()
         // Since each shader table has only one shader record, the stride is same as the size.
         dispatchDesc->HitGroupTable.StartAddress = m_hitGroupShaderTable->GetGPUVirtualAddress();
         dispatchDesc->HitGroupTable.SizeInBytes = m_hitGroupShaderTable->GetDesc().Width;
-        dispatchDesc->HitGroupTable.StrideInBytes = dispatchDesc->HitGroupTable.SizeInBytes;
+        dispatchDesc->HitGroupTable.StrideInBytes = m_hitGroupShaderTableStrideInBytes;
         dispatchDesc->MissShaderTable.StartAddress = m_missShaderTable->GetGPUVirtualAddress();
         dispatchDesc->MissShaderTable.SizeInBytes = m_missShaderTable->GetDesc().Width;
         dispatchDesc->MissShaderTable.StrideInBytes = dispatchDesc->MissShaderTable.SizeInBytes;
@@ -928,8 +911,8 @@ void D3D12RaytracingSimpleLighting::DoRaytracing()
     {
         descriptorSetCommandList->SetDescriptorHeaps(1, m_descriptorHeap.GetAddressOf());
         // Set index and successive vertex buffer decriptor tables
-        commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::VertexBuffersSlot, m_indexBuffer.gpuDescriptorHandle);
-        commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputViewSlot, m_raytracingOutputResourceUAVGpuDescriptor);
+        //commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::VertexBuffersSlot, m_indexBuffer.gpuDescriptorHandle);
+		commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputViewSlot, m_raytracingOutputResourceUAVGpuDescriptor);
     };
 
     commandList->SetComputeRootSignature(m_raytracingGlobalRootSignature.Get());
@@ -1010,8 +993,8 @@ void D3D12RaytracingSimpleLighting::ReleaseDeviceDependentResources()
     m_descriptorHeap.Reset();
     m_descriptorsAllocated = 0;
     m_raytracingOutputResourceUAVDescriptorHeapIndex = UINT_MAX;
-    m_indexBuffer.resource.Reset();
-    m_vertexBuffer.resource.Reset();
+    m_cubeIndexBuffer.resource.Reset();
+    m_cubeVertexBuffer.resource.Reset();
     m_perFrameConstants.Reset();
     m_rayGenShaderTable.Reset();
     m_missShaderTable.Reset();
@@ -1159,6 +1142,7 @@ UINT D3D12RaytracingSimpleLighting::AllocateDescriptor(D3D12_CPU_DESCRIPTOR_HAND
     auto descriptorHeapCpuBase = m_descriptorHeap->GetCPUDescriptorHandleForHeapStart();
     if (descriptorIndexToUse >= m_descriptorHeap->GetDesc().NumDescriptors)
     {
+		ThrowIfFalse(m_descriptorsAllocated < m_descriptorHeap->GetDesc().NumDescriptors, L"Ran out of descriptors on the heap!");
         descriptorIndexToUse = m_descriptorsAllocated++;
     }
     *cpuDescriptor = CD3DX12_CPU_DESCRIPTOR_HANDLE(descriptorHeapCpuBase, descriptorIndexToUse, m_descriptorSize);
