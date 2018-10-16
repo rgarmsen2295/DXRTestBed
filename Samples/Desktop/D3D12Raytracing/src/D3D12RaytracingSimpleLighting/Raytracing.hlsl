@@ -18,11 +18,12 @@
 RaytracingAccelerationStructure Scene : register(t0, space0);
 RWTexture2D<float4> RenderTarget : register(u0);
 //ByteAddressBuffer Indices : register(t1, space0);
-StructuredBuffer<UINT> Indices : register(t1, space0);
-StructuredBuffer<Vertex> Vertices : register(t2, space0);
 
 ConstantBuffer<SceneConstantBuffer> g_sceneCB : register(b0);
 ConstantBuffer<CubeConstantBuffer> g_cubeCB : register(b1);
+
+StructuredBuffer<Index> Indices : register(t1, space0);
+StructuredBuffer<Vertex> Vertices : register(t2, space0);
 
 // Load three 16 bit indices from a byte addressed buffer.
 //uint3 Load3x16BitIndices(uint offsetBytes)
@@ -159,8 +160,9 @@ void MyClosestHitShader(inout RayPayload payload, in MyAttributes attr)
 
     float4 diffuseColor = CalculateDiffuseLighting(hitPosition, triangleNormal);
     float4 color = g_sceneCB.lightAmbientColor + diffuseColor;
-
-    payload.color = color;
+    //triangleNormal.xyz = PrimitiveIndex() / 100000.0;
+    payload.color = float4(abs(triangleNormal), 1.0);
+    //payload.color = color;
 }
 
 [shader("miss")]

@@ -245,10 +245,12 @@ void D3D12RaytracingSimpleLighting::CreateRootSignatures()
     {
         CD3DX12_DESCRIPTOR_RANGE ranges[1]; // Perfomance TIP: Order from most frequent to least frequent.
         ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
+		//ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 1);  // 2 static index and vertex buffers.
 
         CD3DX12_ROOT_PARAMETER rootParameters[GlobalRootSignatureParams::Count];
         rootParameters[GlobalRootSignatureParams::OutputViewSlot].InitAsDescriptorTable(1, &ranges[0]);
         rootParameters[GlobalRootSignatureParams::AccelerationStructureSlot].InitAsShaderResourceView(0);
+		//rootParameters[GlobalRootSignatureParams::VertexBuffersSlot].InitAsDescriptorTable(1, &ranges[1]);
         rootParameters[GlobalRootSignatureParams::SceneConstantSlot].InitAsConstantBufferView(0);
 
         CD3DX12_ROOT_SIGNATURE_DESC globalRootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
@@ -263,6 +265,8 @@ void D3D12RaytracingSimpleLighting::CreateRootSignatures()
 
         CD3DX12_ROOT_PARAMETER rootParameters[LocalRootSignatureParams::Count];
         rootParameters[LocalRootSignatureParams::CubeConstantSlot].InitAsConstants(SizeOfInUint32(m_cubeCB), 1);
+		//rootParameters[LocalRootSignatureParams::IndexBuffer].InitAsShaderResourceView(1);
+		//rootParameters[LocalRootSignatureParams::VertexBuffer].InitAsShaderResourceView(2);
 		rootParameters[LocalRootSignatureParams::VertexBuffers].InitAsDescriptorTable(1, &ranges[0]);
 
         CD3DX12_ROOT_SIGNATURE_DESC localRootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
@@ -279,9 +283,9 @@ void D3D12RaytracingSimpleLighting::CreateRaytracingInterfaces()
 
     if (m_raytracingAPI == RaytracingAPI::FallbackLayer)
     {
-        CreateRaytracingFallbackDeviceFlags createDeviceFlags = m_forceComputeFallback ? 
-                                                    CreateRaytracingFallbackDeviceFlags::ForceComputeFallback : 
-                                                    CreateRaytracingFallbackDeviceFlags::None;
+        CreateRaytracingFallbackDeviceFlags createDeviceFlags = (m_forceComputeFallback ? 
+													CreateRaytracingFallbackDeviceFlags::EnableRootDescriptorsInShaderRecords :
+													CreateRaytracingFallbackDeviceFlags::EnableRootDescriptorsInShaderRecords);
         ThrowIfFailed(D3D12CreateRaytracingFallbackDevice(device, createDeviceFlags, 0, IID_PPV_ARGS(&m_fallbackDevice)));
         m_fallbackDevice->QueryRaytracingCommandList(commandList, IID_PPV_ARGS(&m_fallbackCommandList));
     }
@@ -452,7 +456,7 @@ void D3D12RaytracingSimpleLighting::CreateDescriptorHeap()
 #else
 	UINT numGeometry = m_sponza->m_obj_count;
 #endif
-	descriptorHeapDesc.NumDescriptors = numGeometry * 2 + 3;
+	descriptorHeapDesc.NumDescriptors = numGeometry * 2 + 3 + numGeometry * 2;
     descriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     descriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     descriptorHeapDesc.NodeMask = 0;
@@ -467,9 +471,12 @@ void D3D12RaytracingSimpleLighting::CreateDescriptorHeap()
 	UINT descriptorIndexIB = CreateBufferSRV(&m_cubeIndexBuffer, ARRAYSIZE(m_cubeIndices), sizeof(m_cubeIndices[0]));
 	UINT descriptorIndexVB = CreateBufferSRV(&m_cubeVertexBuffer, ARRAYSIZE(m_cubeVertices), sizeof(m_cubeVertices[0]));
 	ThrowIfFalse(descriptorIndexVB == descriptorIndexIB + 1, L"Vertex Buffer descriptor index must follow that of Index Buffer descriptor index!");
+
+	m_geometryDescriptorIndex = descriptorIndexIB;
 #else
 	// Reset the command list for the acceleration structure construction.
 	commandList->Reset(commandAllocator, nullptr);
+	//m_deviceResources->ResetCommandAllocatorAndCommandlist();
 
 	m_sponza->init(device, commandList);
 
@@ -484,7 +491,10 @@ void D3D12RaytracingSimpleLighting::CreateDescriptorHeap()
 		UINT descriptorIndexIB = CreateBufferSRV(&m_sponza->m_indexBuffer[i], m_sponza->m_indexBuf[i].size(), sizeof(m_sponza->m_indexBuf[i][0]));
 		UINT descriptorIndexVB = CreateBufferSRV(&m_sponza->m_vertexBuffer[i], m_sponza->m_vertBuf[i].size(), sizeof(m_sponza->m_vertBuf[i][0]));
 		ThrowIfFalse(descriptorIndexVB == descriptorIndexIB + 1, L"Vertex Buffer descriptor index must follow that of Index Buffer descriptor index!");
+
+		m_geometryDescriptorIndex = descriptorIndexIB - i * 2;
 	}
+	
 	
 	// Clean-up upload buffers.
 	m_sponza->finalizeInit();
@@ -655,7 +665,7 @@ void D3D12RaytracingSimpleLighting::BuildAccelerationStructures()
     if (m_raytracingAPI == RaytracingAPI::FallbackLayer)
     {
         UINT numBufferElements = static_cast<UINT>(topLevelPrebuildInfo.ResultDataMaxSizeInBytes) / sizeof(UINT32);
-        m_fallbackTopLevelAccelerationStructurePointer = CreateFallbackWrappedPointer(m_topLevelAccelerationStructure.Get(), numBufferElements); 
+        m_fallbackTopLevelAccelerationStructurePointer = CreateFallbackWrappedPointer(m_topLevelAccelerationStructure.Get(), numBufferElements);
     }
 
     // Bottom Level Acceleration Structure desc
@@ -752,6 +762,9 @@ void D3D12RaytracingSimpleLighting::BuildShaderTables()
     {
         struct RootArguments {
             CubeConstantBuffer cb;
+			/*WRAPPED_GPU_POINTER indexBufferGPUHandle;
+			WRAPPED_GPU_POINTER vertexBufferGPUHandle;*/
+			//D3D12_GPU_DESCRIPTOR_HANDLE indexBufferGPUHandle;
 			D3D12_GPU_DESCRIPTOR_HANDLE vertexBufferGPUHandle;
         } rootArguments;
 
@@ -767,8 +780,22 @@ void D3D12RaytracingSimpleLighting::BuildShaderTables()
 		for (int i = 0; i < numShaderRecords; i++) {
 #ifdef SHOW_CUBE
 			//memcpy(&rootArguments.vertexBufferGPUHandle, &m_indexBuffer.gpuDescriptorHandle, sizeof(m_indexBuffer.gpuDescriptorHandle));
-			rootArguments.vertexBufferGPUHandle = m_cubeIndexBuffer.gpuDescriptorHandle;
+
+
+			if (m_raytracingAPI == RaytracingAPI::FallbackLayer)
+			{
+				//rootArguments.indexBufferGPUHandle = CreateFallbackWrappedPointerForBuffer(&m_cubeIndexBuffer, ARRAYSIZE(m_cubeIndices), sizeof(m_cubeIndices[0]));
+				//rootArguments.vertexBufferGPUHandle = CreateFallbackWrappedPointerForBuffer(&m_cubeVertexBuffer, ARRAYSIZE(m_cubeVertices), sizeof(m_cubeVertices[0]));
+				rootArguments.indexBufferGPUHandle = m_cubeIndexBuffer.gpuDescriptorHandle;
+				rootArguments.vertexBufferGPUHandle = m_cubeVertexBuffer.gpuDescriptorHandle;
+			}
+			else
+			{
+				//rootArguments.indexBufferGPUHandle = m_cubeIndexBuffer.gpuDescriptorHandle;
+				//rootArguments.vertexBufferGPUHandle = m_cubeVertexBuffer.gpuDescriptorHandle;
+			}
 #else
+			//rootArguments.indexBufferGPUHandle = m_sponza->m_indexBuffer[i].gpuDescriptorHandle;
 			rootArguments.vertexBufferGPUHandle = m_sponza->m_indexBuffer[i].gpuDescriptorHandle;
 #endif
 			hitGroupShaderTable.push_back(ShaderRecord(hitGroupShaderIdentifier, shaderIdentifierSize, &rootArguments, sizeof(rootArguments)));
@@ -904,6 +931,7 @@ void D3D12RaytracingSimpleLighting::DoRaytracing()
         dispatchDesc->Height = m_height;
         dispatchDesc->Depth = 1;
         commandList->SetPipelineState1(stateObject);
+
         commandList->DispatchRays(dispatchDesc);
     };
 
@@ -911,7 +939,11 @@ void D3D12RaytracingSimpleLighting::DoRaytracing()
     {
         descriptorSetCommandList->SetDescriptorHeaps(1, m_descriptorHeap.GetAddressOf());
         // Set index and successive vertex buffer decriptor tables
-        //commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::VertexBuffersSlot, m_indexBuffer.gpuDescriptorHandle);
+//#ifdef SHOW_CUBE
+//        commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::VertexBuffersSlot, m_cubeIndexBuffer.gpuDescriptorHandle);
+//#else
+//		commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::VertexBuffersSlot, m_sponza->m_indexBuffer[0].gpuDescriptorHandle);
+//#endif
 		commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputViewSlot, m_raytracingOutputResourceUAVGpuDescriptor);
     };
 
@@ -1133,6 +1165,41 @@ WRAPPED_GPU_POINTER D3D12RaytracingSimpleLighting::CreateFallbackWrappedPointer(
         device->CreateUnorderedAccessView(resource, nullptr, &rawBufferUavDesc, bottomLevelDescriptor);
     }
     return m_fallbackDevice->GetWrappedPointerSimple(descriptorHeapIndex, resource->GetGPUVirtualAddress());
+}
+
+// Create a wrapped pointer for the Fallback Layer path.
+WRAPPED_GPU_POINTER D3D12RaytracingSimpleLighting::CreateFallbackWrappedPointerForBuffer(D3DBuffer* buffer, UINT numElements, UINT elementSize)
+{
+	auto device = m_deviceResources->GetD3DDevice();
+
+	// SRV
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	srvDesc.Buffer.NumElements = numElements;
+	if (elementSize == 0)
+	{
+		srvDesc.Format = DXGI_FORMAT_R32_TYPELESS;
+		srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_RAW;
+		srvDesc.Buffer.StructureByteStride = 0;
+	}
+	else
+	{
+		srvDesc.Format = DXGI_FORMAT_UNKNOWN;
+		srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
+		srvDesc.Buffer.StructureByteStride = elementSize;
+	}
+
+	D3D12_CPU_DESCRIPTOR_HANDLE bufferDescriptor;
+
+	// Only compute fallback requires a valid descriptor index when creating a wrapped pointer.
+	UINT descriptorHeapIndex = 0;
+	if (!m_fallbackDevice->UsingRaytracingDriver())
+	{
+		descriptorHeapIndex = AllocateDescriptor(&bufferDescriptor);
+		device->CreateShaderResourceView(buffer->resource.Get(), &srvDesc, buffer->cpuDescriptorHandle);
+	}
+	return m_fallbackDevice->GetWrappedPointerSimple(descriptorHeapIndex, buffer->resource->GetGPUVirtualAddress());
 }
 
 // Allocate a descriptor and return its index. 

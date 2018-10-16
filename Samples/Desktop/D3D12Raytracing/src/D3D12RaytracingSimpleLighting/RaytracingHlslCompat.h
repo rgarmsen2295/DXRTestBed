@@ -16,10 +16,10 @@
 #include "HlslCompat.h"
 #else
 using namespace DirectX;
+#endif
 
 // Shader will use byte encoding to access indices.
 typedef UINT Index;
-#endif
 
 struct SceneConstantBuffer
 {
@@ -39,9 +39,9 @@ struct Vertex
 {
 	XMFLOAT3 position;
 	XMFLOAT3 normal;
-	XMFLOAT2 uv;
-	XMFLOAT3 tangent;
-	XMFLOAT3 bitangent;
+	//XMFLOAT2 uv;
+	//XMFLOAT3 tangent;
+	//XMFLOAT3 bitangent;
 };
 
 #endif // RAYTRACINGHLSLCOMPAT_H

@@ -46,18 +46,18 @@ void Shape::loadMesh(const string & meshName, string * mtlpath)
 					vert = {
 						{ positions[(j * 3) + 0], positions[(j * 3) + 1], positions[(j * 3) + 2] },
 						{ normals[(j * 3) + 0], normals[(j * 3) + 1], normals[(j * 3) + 2] },
-						{ texcoords[(j * 2) + 0], texcoords[(j * 2) + 1] },
+						/*{ texcoords[(j * 2) + 0], texcoords[(j * 2) + 1] },
 						{ 0.0f, 0.0f, 0.0f},
-						{ 0.0f, 0.0f, 0.0f }
+						{ 0.0f, 0.0f, 0.0f }*/
 					};
 				}
 				else {
 					vert = {
 						{ positions[(j * 3) + 0], positions[(j * 3) + 1], positions[(j * 3) + 2] },
 						{ normals[(j * 3) + 0], normals[(j * 3) + 1], normals[(j * 3) + 2] },
-						{ 0.0f, 0.0f },
+						/*{ 0.0f, 0.0f },
 						{ 0.0f, 0.0f, 0.0f},
-						{ 0.0f, 0.0f, 0.0f }
+						{ 0.0f, 0.0f, 0.0f }*/
 					};
 				}
 				m_vertBuf[i].push_back(vert);
@@ -185,14 +185,14 @@ void Shape::computeTangents()
 			XMVECTOR pos2 = XMLoadFloat3(&v2.position);
 			XMVECTOR pos3 = XMLoadFloat3(&v3.position);
 
-			XMVECTOR uv1 = XMLoadFloat2(&v1.uv);
+			/*XMVECTOR uv1 = XMLoadFloat2(&v1.uv);
 			XMVECTOR uv2 = XMLoadFloat2(&v2.uv);
-			XMVECTOR uv3 = XMLoadFloat2(&v3.uv);
+			XMVECTOR uv3 = XMLoadFloat2(&v3.uv);*/
 
 			XMVECTOR tempEdge1 = pos2 - pos1;
 			XMVECTOR tempEdge2 = pos3 - pos1;
-			XMVECTOR tempDeltaUV1 = uv2 - uv1;
-			XMVECTOR tempDeltaUV2 = uv3 - uv1;
+			/*XMVECTOR tempDeltaUV1 = uv2 - uv1;
+			XMVECTOR tempDeltaUV2 = uv3 - uv1;*/
 
 			XMFLOAT3 edge1;
 			XMFLOAT3 edge2;
@@ -200,31 +200,31 @@ void Shape::computeTangents()
 			XMFLOAT2 deltaUV2;
 			XMStoreFloat3(&edge1, tempEdge1);
 			XMStoreFloat3(&edge2, tempEdge2);
-			XMStoreFloat2(&deltaUV1, tempDeltaUV1);
-			XMStoreFloat2(&deltaUV2, tempDeltaUV2);
+			/*XMStoreFloat2(&deltaUV1, tempDeltaUV1);
+			XMStoreFloat2(&deltaUV2, tempDeltaUV2);*/
 
-			float invDeterminant = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y);
+			//float invDeterminant = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y);
 
 			// Calculate vertex tangent.
 			{
-				XMFLOAT3 tangent;
+				/*XMFLOAT3 tangent;
 				tangent.x = invDeterminant * (deltaUV2.y * edge1.x - deltaUV1.y * edge2.x);
 				tangent.y = invDeterminant * (deltaUV2.y * edge1.y - deltaUV1.y * edge2.y);
-				tangent.z = invDeterminant * (deltaUV2.y * edge1.z - deltaUV1.y * edge2.z);
+				tangent.z = invDeterminant * (deltaUV2.y * edge1.z - deltaUV1.y * edge2.z);*/
 
-				XMVECTOR tempTangent = XMLoadFloat3(&tangent);
+				/*XMVECTOR tempTangent = XMLoadFloat3(&tangent);
 				XMVECTOR updatedTangent1 = XMLoadFloat3(&v1.tangent) + tempTangent;
 				XMVECTOR updatedTangent2 = XMLoadFloat3(&v2.tangent) + tempTangent;
 				XMVECTOR updatedTangent3 = XMLoadFloat3(&v3.tangent) + tempTangent;
 
 				XMStoreFloat3(&v1.tangent, updatedTangent1);
 				XMStoreFloat3(&v2.tangent, updatedTangent2);
-				XMStoreFloat3(&v3.tangent, updatedTangent3);
+				XMStoreFloat3(&v3.tangent, updatedTangent3);*/
 			}
 
 			// Calculate vertex bitangent.
 			{
-				XMFLOAT3 bitangent;
+				/*XMFLOAT3 bitangent;
 				bitangent.x = invDeterminant * (-deltaUV2.x * edge1.x + deltaUV1.x * edge2.x);
 				bitangent.y = invDeterminant * (-deltaUV2.x * edge1.y + deltaUV1.x * edge2.y);
 				bitangent.z = invDeterminant * (-deltaUV2.x * edge1.z + deltaUV1.x * edge2.z);
@@ -236,12 +236,12 @@ void Shape::computeTangents()
 
 				XMStoreFloat3(&v1.bitangent, updatedBitangent1);
 				XMStoreFloat3(&v2.bitangent, updatedBitangent2);
-				XMStoreFloat3(&v3.bitangent, updatedBitangent3);
+				XMStoreFloat3(&v3.bitangent, updatedBitangent3);*/
 			}
 		}
 	}
 
-	for (int i = 0; i < m_obj_count; i++) {
+	/*for (int i = 0; i < m_obj_count; i++) {
 		for (auto & vertex : m_vertBuf[i]) {
 			{
 				XMVECTOR tempTangent = XMLoadFloat3(&vertex.tangent);
@@ -254,7 +254,7 @@ void Shape::computeTangents()
 				XMStoreFloat3(&vertex.bitangent, tempBitangent);
 			}
 		}
-	}
+	}*/
 }
 
 void Shape::resize()
