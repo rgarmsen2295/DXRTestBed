@@ -494,8 +494,7 @@ void D3D12RaytracingSimpleLighting::CreateDescriptorHeap()
 
 		m_geometryDescriptorIndex = descriptorIndexIB - i * 2;
 	}
-	
-	
+
 	// Clean-up upload buffers.
 	m_sponza->finalizeInit();
 #endif

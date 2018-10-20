@@ -161,8 +161,8 @@ void MyClosestHitShader(inout RayPayload payload, in MyAttributes attr)
     float4 diffuseColor = CalculateDiffuseLighting(hitPosition, triangleNormal);
     float4 color = g_sceneCB.lightAmbientColor + diffuseColor;
     //triangleNormal.xyz = PrimitiveIndex() / 100000.0;
-    payload.color = float4(abs(triangleNormal), 1.0);
-    //payload.color = color;
+    //payload.color = float4(abs(triangleNormal), 1.0);
+    payload.color = color;
 }
 
 [shader("miss")]

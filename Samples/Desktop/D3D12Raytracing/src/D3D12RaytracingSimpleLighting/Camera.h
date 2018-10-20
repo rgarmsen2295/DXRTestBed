@@ -11,10 +11,10 @@ using namespace DirectX;
 class Camera {
 public:
 	// Scale for the W and A key movements
-	const float WSScale = 0.05f;
+	const float WSScale = 0.01f;
 
 	// Scale for the A and S key movements
-	const float ADScale = 0.05f;
+	const float ADScale = 0.01f;
 
 	Camera();
 

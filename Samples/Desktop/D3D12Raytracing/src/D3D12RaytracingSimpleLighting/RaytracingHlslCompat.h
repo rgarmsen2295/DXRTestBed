@@ -39,9 +39,23 @@ struct Vertex
 {
 	XMFLOAT3 position;
 	XMFLOAT3 normal;
-	//XMFLOAT2 uv;
-	//XMFLOAT3 tangent;
-	//XMFLOAT3 bitangent;
+	XMFLOAT2 uv;
+	XMFLOAT3 tangent;
+	XMFLOAT3 bitangent;
+};
+
+// Attributes per primitive instance.
+struct PrimitiveInstanceConstantBuffer
+{
+	UINT instanceIndex;
+	UINT primitiveType; // Procedural primitive type
+};
+
+// Dynamic attributes per primitive instance.
+struct PrimitiveInstancePerFrameBuffer
+{
+	XMMATRIX localSpaceToBottomLevelAS;   // Matrix from local primitive space to bottom-level object space.
+	XMMATRIX bottomLevelASToLocalSpace;   // Matrix from bottom-level object space to local primitive space.
 };
 
 #endif // RAYTRACINGHLSLCOMPAT_H
