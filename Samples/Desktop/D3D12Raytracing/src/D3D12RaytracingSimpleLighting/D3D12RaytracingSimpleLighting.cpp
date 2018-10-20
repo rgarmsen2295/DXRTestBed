@@ -456,7 +456,7 @@ void D3D12RaytracingSimpleLighting::CreateDescriptorHeap()
 #else
 	UINT numGeometry = m_sponza->m_obj_count;
 #endif
-	descriptorHeapDesc.NumDescriptors = numGeometry * 2 + 3 + numGeometry * 2;
+	descriptorHeapDesc.NumDescriptors = numGeometry * 2 + 3;
     descriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     descriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     descriptorHeapDesc.NodeMask = 0;
