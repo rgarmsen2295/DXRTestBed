@@ -428,7 +428,7 @@ void D3D12RaytracingSimpleLighting::BuildGeometry()
 	auto commandQueue = m_deviceResources->GetCommandQueue();
 	auto commandAllocator = m_deviceResources->GetCommandAllocator();
 
-#define SHOW_CUBE
+//#define SHOW_CUBE
 #ifdef SHOW_CUBE
 	AllocateUploadBuffer(device, m_cubeIndices, sizeof(m_cubeIndices), &m_cubeIndexBuffer.resource);
 	AllocateUploadBuffer(device, m_cubeVertices, sizeof(m_cubeVertices), &m_cubeVertexBuffer.resource);
@@ -515,9 +515,9 @@ void D3D12RaytracingSimpleLighting::BuildGeometryDescsForBottomLevelAS(std::arra
 	D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS &bottomLevelInputs = bottomLevelBuildDesc.Inputs;
 	bottomLevelInputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
 	bottomLevelInputs.Flags = buildFlags;
-	bottomLevelInputs.NumDescs = sponzaGeometryDescs.size();
+	bottomLevelInputs.NumDescs = geometryDescs[BottomLevelASType::Triangle].size();
 	bottomLevelInputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
-	bottomLevelInputs.pGeometryDescs = sponzaGeometryDescs.data();
+	bottomLevelInputs.pGeometryDescs = geometryDescs[BottomLevelASType::Triangle].data();
 #endif
 
 	// AABB geometry desc
