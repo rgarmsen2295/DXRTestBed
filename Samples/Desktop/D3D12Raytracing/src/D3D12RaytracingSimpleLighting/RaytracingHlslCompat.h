@@ -21,6 +21,17 @@ using namespace DirectX;
 // Shader will use byte encoding to access indices.
 typedef UINT Index;
 
+struct ProceduralPrimitiveAttributes
+{
+	XMFLOAT3 normal;
+};
+
+struct RayPayload
+{
+	XMFLOAT4 color;
+	//UINT   recursionDepth;
+};
+
 struct SceneConstantBuffer
 {
     XMMATRIX projectionToWorld;

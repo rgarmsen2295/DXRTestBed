@@ -15,6 +15,12 @@
 #define HLSL
 #include "RaytracingHlslCompat.h"
 
+struct Ray
+{
+    float3 origin;
+    float3 direction;
+};
+
 RaytracingAccelerationStructure Scene : register(t0, space0);
 RWTexture2D<float4> RenderTarget : register(u0);
 //ByteAddressBuffer Indices : register(t1, space0);
@@ -57,11 +63,11 @@ StructuredBuffer<Vertex> Vertices : register(t2, space0);
 //    return indices;
 //}
 
-typedef BuiltInTriangleIntersectionAttributes MyAttributes;
-struct RayPayload
-{
-    float4 color;
-};
+typedef BuiltInTriangleIntersectionAttributes TriangleAttributes;
+//struct RayPayload
+//{
+//    float4 color;
+//};
 
 // Retrieve hit world position.
 float3 HitWorldPosition()
@@ -131,7 +137,7 @@ void MyRaygenShader()
 }
 
 [shader("closesthit")]
-void MyClosestHitShader(inout RayPayload payload, in MyAttributes attr)
+void MyClosestHitShader(inout RayPayload payload, in TriangleAttributes attr)
 {
     float3 hitPosition = HitWorldPosition();
 
@@ -163,6 +169,131 @@ void MyClosestHitShader(inout RayPayload payload, in MyAttributes attr)
     //triangleNormal.xyz = PrimitiveIndex() / 100000.0;
     //payload.color = float4(abs(triangleNormal), 1.0);
     payload.color = color;
+}
+
+[shader("closesthit")]
+void AABBClosestHitShader(inout RayPayload payload, in ProceduralPrimitiveAttributes attr)
+{
+    // TODO(rgarmsen2295): Do something useful here.
+    payload.color = float4(1.0, 0.0, 0.0, 1.0);
+}
+
+void swap(inout float a, inout float b)
+{
+    float temp = a;
+    a = b;
+    b = temp;
+}
+
+bool IsInRange(in float val, in float min, in float max)
+{
+    return (val >= min && val <= max);
+}
+
+// Test if a hit is culled based on specified RayFlags.
+bool IsCulled(in Ray ray, in float3 hitSurfaceNormal)
+{
+    float rayDirectionNormalDot = dot(ray.direction, hitSurfaceNormal);
+
+    bool isCulled =
+        ((RayFlags() & RAY_FLAG_CULL_BACK_FACING_TRIANGLES) && (rayDirectionNormalDot > 0))
+        ||
+        ((RayFlags() & RAY_FLAG_CULL_FRONT_FACING_TRIANGLES) && (rayDirectionNormalDot < 0));
+
+    return isCulled;
+}
+
+// Solve a quadratic equation.
+// Ref: https://www.scratchapixel.com/lessons/3d-basic-rendering/minimal-ray-tracer-rendering-simple-shapes/ray-sphere-intersection
+bool SolveQuadraticEqn(float a, float b, float c, out float x0, out float x1)
+{
+    float discr = b * b - 4 * a * c;
+    if (discr < 0)
+        return false;
+    else if (discr == 0)
+        x0 = x1 = -0.5 * b / a;
+    else
+    {
+        float q = (b > 0) ?
+            -0.5 * (b + sqrt(discr)) :
+            -0.5 * (b - sqrt(discr));
+        x0 = q / a;
+        x1 = c / q;
+    }
+    if (x0 > x1)
+        swap(x0, x1);
+
+    return true;
+}
+
+// Calculate a normal for a hit point on a sphere.
+float3 CalculateNormalForARaySphereHit(in Ray ray, in float thit, float3 center)
+{
+    float3 hitPosition = ray.origin + thit * ray.direction;
+    return normalize(hitPosition - center);
+}
+
+// Analytic solution of an unbounded ray sphere intersection points.
+// Ref: https://www.scratchapixel.com/lessons/3d-basic-rendering/minimal-ray-tracer-rendering-simple-shapes/ray-sphere-intersection
+bool SolveRaySphereIntersectionEquation(in Ray ray, out float tmin, out float tmax, in float3 center, in float radius)
+{
+    float3 L = ray.origin - center;
+    float a = dot(ray.direction, ray.direction);
+    float b = 2 * dot(ray.direction, L);
+    float c = dot(L, L) - radius * radius;
+    return SolveQuadraticEqn(a, b, c, tmin, tmax);
+}
+
+// Test if a hit is valid based on specified RayFlags and <RayTMin, RayTCurrent> range.
+bool IsAValidHit(in Ray ray, in float thit, in float3 hitSurfaceNormal)
+{
+    return IsInRange(thit, RayTMin(), RayTCurrent()) && !IsCulled(ray, hitSurfaceNormal);
+}
+
+[shader("intersection")]
+void SphereIntersectionShader()
+{
+    float3 center = float3(0, 0, 0);
+    float radius = 1;
+    Ray ray;
+
+    float t0, t1; // solutions for t if the ray intersects 
+
+    if (!SolveRaySphereIntersectionEquation(ray, t0, t1, center, radius))
+    {
+        return;
+    }
+    float tmax = t1;
+    ProceduralPrimitiveAttributes attr;
+    if (t0 < RayTMin())
+    {
+        // t0 is before RayTMin, let's use t1 instead .
+        if (t1 < RayTMin())
+            return; // both t0 and t1 are before RayTMin
+
+        attr.normal = CalculateNormalForARaySphereHit(ray, t1, center);
+        if (IsAValidHit(ray, t1, attr.normal))
+        {
+            float thit = t1;
+            ReportHit(thit, /*hitKind*/0, attr);
+        }
+    }
+    else
+    {
+        attr.normal = CalculateNormalForARaySphereHit(ray, t0, center);
+        if (IsAValidHit(ray, t0, attr.normal))
+        {
+            float thit = t0;
+            ReportHit(thit, /*hitKind*/0, attr);
+        }
+
+        attr.normal = CalculateNormalForARaySphereHit(ray, t1, center);
+        if (IsAValidHit(ray, t1, attr.normal))
+        {
+            float thit = t1;
+            ReportHit(thit, /*hitKind*/0, attr);
+        }
+    }
 }
 
 [shader("miss")]

@@ -30,15 +30,23 @@ namespace GlobalRootSignatureParams {
     };
 }
 
-namespace LocalRootSignatureParams {
+namespace TriangleLocalRootSignatureParams {
     enum Value {
         CubeConstantSlot = 0,
 		VertexBuffers,
-		//IndexBuffer,
-		//VertexBuffer,
         Count 
     };
 }
+
+namespace AABBLocalRootSignatureParams {
+	enum Value {
+		CubeConstantSlot = 0,
+		GeometryIndex,
+		Count
+	};
+}
+
+const UINT LocalRootSignatureCount = 2;
 
 // The sample supports both Raytracing Fallback Layer and DirectX Raytracing APIs. 
 // This is purely for demonstration purposes to show where the API differences are. 
@@ -102,7 +110,7 @@ private:
 
     // Root signatures
     ComPtr<ID3D12RootSignature> m_raytracingGlobalRootSignature;
-    ComPtr<ID3D12RootSignature> m_raytracingLocalRootSignature;
+	ComPtr<ID3D12RootSignature> m_raytracingLocalRootSignature[LocalRootSignatureCount];
 
     // Descriptors
     ComPtr<ID3D12DescriptorHeap> m_descriptorHeap;
@@ -227,8 +235,11 @@ private:
 
     // Shader tables
     static const wchar_t* c_hitGroupName;
+	static const wchar_t* c_aabbHitGroupName;
     static const wchar_t* c_raygenShaderName;
     static const wchar_t* c_closestHitShaderName;
+	static const wchar_t* c_aabbClosestHitShaderName;
+	static const wchar_t* c_sphereIntersectionShaderName;
     static const wchar_t* c_missShaderName;
     ComPtr<ID3D12Resource> m_missShaderTable;
     ComPtr<ID3D12Resource> m_hitGroupShaderTable;
