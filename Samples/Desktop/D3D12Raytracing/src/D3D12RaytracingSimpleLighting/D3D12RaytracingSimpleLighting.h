@@ -11,8 +11,13 @@
 
 #pragma once
 
+#include <array>
+#include <vector>
+
 #include "DXSample.h"
 #include "StepTimer.h"
+#include "RaytracingSceneDefines.h"
+#include "DirectXRaytracingHelper.h"
 #include "RaytracingHlslCompat.h"
 
 namespace GlobalRootSignatureParams {
@@ -67,6 +72,11 @@ public:
 private:
     static const UINT FrameCount = 3;
 
+	// Constants.
+	const UINT NUM_BLAS = 2;          // Triangle + AABB bottom-level AS.
+	const float c_aabbWidth = 2;      // AABB width.
+	const float c_aabbDistance = 2;   // Distance between AABBs.
+
     // We'll allocate space for several of these and they will need to be padded for alignment.
     static_assert(sizeof(SceneConstantBuffer) < D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT, "Checking the size here.");
 
@@ -102,6 +112,9 @@ private:
     // Raytracing scene
     SceneConstantBuffer m_sceneCB[FrameCount];
     CubeConstantBuffer m_cubeCB;
+
+	// Non-triangle scene
+	D3DBuffer m_aabbBuffer;
 
     // Geometry
     D3DBuffer m_cubeIndexBuffer;
@@ -200,8 +213,12 @@ private:
 	};
 
     // Acceleration structure
-    ComPtr<ID3D12Resource> m_bottomLevelAccelerationStructure;
-    ComPtr<ID3D12Resource> m_topLevelAccelerationStructure;
+    /*ComPtr<ID3D12Resource> m_bottomLevelAccelerationStructure;
+    ComPtr<ID3D12Resource> m_topLevelAccelerationStructure;*/
+
+	// Acceleration structure
+	ComPtr<ID3D12Resource> m_bottomLevelAS[BottomLevelASType::Count];
+	ComPtr<ID3D12Resource> m_topLevelAS;
 
     // Raytracing output
     ComPtr<ID3D12Resource> m_raytracingOutput;
@@ -248,7 +265,12 @@ private:
     void CreateDescriptorHeap();
     void CreateRaytracingOutputResource();
     void BuildGeometry();
-    void BuildAccelerationStructures();
+	void BuildGeometryDescsForBottomLevelAS(std::array<std::vector<D3D12_RAYTRACING_GEOMETRY_DESC>, BottomLevelASType::Count>& geometryDescs);
+	AccelerationStructureBuffers BuildBottomLevelAS(const std::vector<D3D12_RAYTRACING_GEOMETRY_DESC>& geometryDescs, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE);
+	template <class InstanceDescType, class BLASPtrType>
+	void BuildBotomLevelASInstanceDescs(BLASPtrType *bottomLevelASaddresses, ComPtr<ID3D12Resource>* instanceDescsResource);
+	AccelerationStructureBuffers BuildTopLevelAS(AccelerationStructureBuffers bottomLevelAS[BottomLevelASType::Count], D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE);
+	void BuildAccelerationStructures();
     void BuildShaderTables();
     void SelectRaytracingAPI(RaytracingAPI type);
     void UpdateForSizeChange(UINT clientWidth, UINT clientHeight);

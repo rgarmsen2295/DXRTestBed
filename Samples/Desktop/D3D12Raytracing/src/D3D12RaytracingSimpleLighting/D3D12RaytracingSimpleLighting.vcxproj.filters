@@ -78,6 +78,9 @@
     <ClInclude Include="MaterialCBuffer.h">
       <Filter>Header Files\Util</Filter>
     </ClInclude>
+    <ClInclude Include="RaytracingSceneDefines.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">

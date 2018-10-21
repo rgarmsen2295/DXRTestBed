@@ -172,6 +172,7 @@ PrebuildCheck.bat</Command>
     <ClInclude Include="Material.h" />
     <ClInclude Include="MaterialCBuffer.h" />
     <ClInclude Include="RaytracingHlslCompat.h" />
+    <ClInclude Include="RaytracingSceneDefines.h" />
     <ClInclude Include="Shape.h" />
     <ClInclude Include="StepTimer.h" />
     <ClInclude Include="Texture.h" />
