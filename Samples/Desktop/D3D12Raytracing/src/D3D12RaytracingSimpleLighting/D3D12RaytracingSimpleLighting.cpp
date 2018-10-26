@@ -71,7 +71,7 @@ void D3D12RaytracingSimpleLighting::OnInit()
         DXGI_FORMAT_R8G8B8A8_UNORM,
         DXGI_FORMAT_UNKNOWN,
         FrameCount,
-        D3D_FEATURE_LEVEL_11_0,
+        D3D_FEATURE_LEVEL_12_0,
         // Sample shows handling of use cases with tearing support, which is OS dependent and has been supported since TH2.
         // Since the Fallback Layer requires Fall Creator's update (RS3), we don't need to handle non-tearing cases.
         DeviceResources::c_RequireTearingSupport,
@@ -285,7 +285,7 @@ void D3D12RaytracingSimpleLighting::CreateRootSignatures()
 	{
 		CD3DX12_ROOT_PARAMETER rootParameters[AABBLocalRootSignatureParams::Count];
 		rootParameters[AABBLocalRootSignatureParams::CubeConstantSlot].InitAsConstants(SizeOfInUint32(m_cubeCB), 1);
-		rootParameters[AABBLocalRootSignatureParams::GeometryIndex].InitAsConstants(SizeOfInUint32(PrimitiveInstanceConstantBuffer), 2);
+		rootParameters[AABBLocalRootSignatureParams::SphereConstantSlot].InitAsConstants(SizeOfInUint32(Sphere), 2);
 
 		CD3DX12_ROOT_SIGNATURE_DESC localRootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
 		localRootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE;
@@ -459,6 +459,36 @@ void D3D12RaytracingSimpleLighting::CreateRaytracingOutputResource()
     m_raytracingOutputResourceUAVGpuDescriptor = CD3DX12_GPU_DESCRIPTOR_HANDLE(m_descriptorHeap->GetGPUDescriptorHandleForHeapStart(), m_raytracingOutputResourceUAVDescriptorHeapIndex, m_descriptorSize);
 }
 
+// Build AABBs for procedural geometry within a bottom-level acceleration structure.
+void D3D12RaytracingSimpleLighting::BuildProceduralGeometryAABBs()
+{
+	auto device = m_deviceResources->GetD3DDevice();
+
+	// Set up Sphere geometry info.
+	{
+		m_sphere.info = XMFLOAT4(0.0, 0.0, 0.0, 10.0);
+	}
+
+	// Set up Sphere AABBs.
+	{
+		m_aabbs.resize(IntersectionShaderType::TotalPrimitiveCount);
+		UINT offset = 0;
+
+		// Analytic primitives.
+		{
+			m_aabbs[0] = D3D12_RAYTRACING_AABB{
+				m_sphere.info.x - m_sphere.info.w,
+				m_sphere.info.y - m_sphere.info.w,
+				m_sphere.info.z - m_sphere.info.w,
+				m_sphere.info.x + m_sphere.info.w,
+				m_sphere.info.y + m_sphere.info.w,
+				m_sphere.info.z + m_sphere.info.w
+			};
+		}
+		AllocateUploadBuffer(device, m_aabbs.data(), m_aabbs.size() * sizeof(m_aabbs[0]), &m_aabbBuffer.resource);
+	}
+}
+
 // Build geometry used in the sample.
 void D3D12RaytracingSimpleLighting::BuildGeometry()
 {
@@ -467,7 +497,7 @@ void D3D12RaytracingSimpleLighting::BuildGeometry()
 	auto commandQueue = m_deviceResources->GetCommandQueue();
 	auto commandAllocator = m_deviceResources->GetCommandAllocator();
 
-//#define SHOW_CUBE
+#define SHOW_CUBE
 #ifdef SHOW_CUBE
 	AllocateUploadBuffer(device, m_cubeIndices, sizeof(m_cubeIndices), &m_cubeIndexBuffer.resource);
 	AllocateUploadBuffer(device, m_cubeVertices, sizeof(m_cubeVertices), &m_cubeVertexBuffer.resource);
@@ -480,6 +510,8 @@ void D3D12RaytracingSimpleLighting::BuildGeometry()
 	m_sponza->loadMesh(sponzaObj, &resourcePath);
 	m_sponza->resize();
 #endif
+
+	BuildProceduralGeometryAABBs();
 }
 
 // Build geometry descs for bottom-level AS.
@@ -509,12 +541,12 @@ void D3D12RaytracingSimpleLighting::BuildGeometryDescsForBottomLevelAS(std::arra
 		geometryDesc.Triangles.VertexCount = static_cast<UINT>(m_cubeVertexBuffer.resource->GetDesc().Width) / sizeof(Vertex);
 		geometryDesc.Triangles.VertexBuffer.StartAddress = m_cubeVertexBuffer.resource->GetGPUVirtualAddress();
 		geometryDesc.Triangles.VertexBuffer.StrideInBytes = sizeof(Vertex);
-		
+
 		// Mark the geometry as opaque. 
 		// PERFORMANCE TIP: mark geometry as opaque whenever applicable as it can enable important ray processing optimizations.
 		// Note: When rays encounter opaque geometry an any hit shader will not be executed whether it is present or not.
 		geometryDesc.Flags = D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE;
-		    
+
 		D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC bottomLevelBuildDesc = {};
 		D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS &bottomLevelInputs = bottomLevelBuildDesc.Inputs;
 		bottomLevelInputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
@@ -524,39 +556,42 @@ void D3D12RaytracingSimpleLighting::BuildGeometryDescsForBottomLevelAS(std::arra
 		bottomLevelInputs.pGeometryDescs = &geometryDesc;
 	}
 #else
-	// Triangle bottom-level AS contains # of shapes in given object.
-	geometryDescs[BottomLevelASType::Triangle].resize(m_sponza->m_obj_count);
-
-	for (int i = 0; i < m_sponza->m_obj_count; i++)
+	// Triangle geometry desc
 	{
-		auto& geometryDesc = geometryDescs[BottomLevelASType::Triangle][i];
-		geometryDesc = {};
+		// Triangle bottom-level AS contains # of shapes in given object.
+		geometryDescs[BottomLevelASType::Triangle].resize(m_sponza->m_obj_count);
 
-		geometryDesc.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
-		geometryDesc.Triangles.IndexBuffer = m_sponza->m_indexBuffer[i].resource->GetGPUVirtualAddress();
-		geometryDesc.Triangles.IndexCount = static_cast<UINT>(m_sponza->m_indexBuffer[i].resource->GetDesc().Width) / sizeof(Index);
-		geometryDesc.Triangles.IndexFormat = DXGI_FORMAT_R32_UINT; // Needs to match struct Index !
-		geometryDesc.Triangles.Transform3x4 = 0;
-		geometryDesc.Triangles.VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT; // Needs to match struct Vertex !
-		geometryDesc.Triangles.VertexCount = static_cast<UINT>(m_sponza->m_vertexBuffer[i].resource->GetDesc().Width) / sizeof(Vertex);
-		geometryDesc.Triangles.VertexBuffer.StartAddress = m_sponza->m_vertexBuffer[i].resource->GetGPUVirtualAddress();
-		geometryDesc.Triangles.VertexBuffer.StrideInBytes = sizeof(Vertex);
-		
-		// Mark the geometry as opaque. 
-		// PERFORMANCE TIP: mark geometry as opaque whenever applicable as it can enable important ray processing optimizations.
-		// Note: When rays encounter opaque geometry an any hit shader will not be executed whether it is present or not.
-		geometryDesc.Flags = D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE;
-		
-		//sponzaGeometryDescs.push_back(geometryDesc);
+		for (int i = 0; i < m_sponza->m_obj_count; i++)
+		{
+			auto& geometryDesc = geometryDescs[BottomLevelASType::Triangle][i];
+			geometryDesc = {};
+
+			geometryDesc.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
+			geometryDesc.Triangles.IndexBuffer = m_sponza->m_indexBuffer[i].resource->GetGPUVirtualAddress();
+			geometryDesc.Triangles.IndexCount = static_cast<UINT>(m_sponza->m_indexBuffer[i].resource->GetDesc().Width) / sizeof(Index);
+			geometryDesc.Triangles.IndexFormat = DXGI_FORMAT_R32_UINT; // Needs to match struct Index !
+			geometryDesc.Triangles.Transform3x4 = 0;
+			geometryDesc.Triangles.VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT; // Needs to match struct Vertex !
+			geometryDesc.Triangles.VertexCount = static_cast<UINT>(m_sponza->m_vertexBuffer[i].resource->GetDesc().Width) / sizeof(Vertex);
+			geometryDesc.Triangles.VertexBuffer.StartAddress = m_sponza->m_vertexBuffer[i].resource->GetGPUVirtualAddress();
+			geometryDesc.Triangles.VertexBuffer.StrideInBytes = sizeof(Vertex);
+
+			// Mark the geometry as opaque. 
+			// PERFORMANCE TIP: mark geometry as opaque whenever applicable as it can enable important ray processing optimizations.
+			// Note: When rays encounter opaque geometry an any hit shader will not be executed whether it is present or not.
+			geometryDesc.Flags = D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE;
+
+			//sponzaGeometryDescs.push_back(geometryDesc);
+		}
+
+		D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC bottomLevelBuildDesc = {};
+		D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS &bottomLevelInputs = bottomLevelBuildDesc.Inputs;
+		bottomLevelInputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+		bottomLevelInputs.Flags = buildFlags;
+		bottomLevelInputs.NumDescs = geometryDescs[BottomLevelASType::Triangle].size();
+		bottomLevelInputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
+		bottomLevelInputs.pGeometryDescs = geometryDescs[BottomLevelASType::Triangle].data();
 	}
-		
-	D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC bottomLevelBuildDesc = {};
-	D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS &bottomLevelInputs = bottomLevelBuildDesc.Inputs;
-	bottomLevelInputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
-	bottomLevelInputs.Flags = buildFlags;
-	bottomLevelInputs.NumDescs = geometryDescs[BottomLevelASType::Triangle].size();
-	bottomLevelInputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
-	bottomLevelInputs.pGeometryDescs = geometryDescs[BottomLevelASType::Triangle].data();
 #endif
 
 	// AABB geometry desc
@@ -570,7 +605,7 @@ void D3D12RaytracingSimpleLighting::BuildGeometryDescsForBottomLevelAS(std::arra
 		// One AABB primitive per geometry.
 		geometryDescs[BottomLevelASType::AABB].resize(IntersectionShaderType::TotalPrimitiveCount, aabbDescTemplate);
 
-		// Create AABB geometries. 
+		// Create AABB geometries.
 		// Having separate geometries allows of separate shader record binding per geometry.
 		// In this sample, this lets us specify custom hit groups per AABB geometry.
 		for (UINT i = 0; i < IntersectionShaderType::TotalPrimitiveCount; i++)
@@ -667,7 +702,7 @@ void D3D12RaytracingSimpleLighting::BuildBotomLevelASInstanceDescs(BLASPtrType *
 
 	// Width of a bottom-level AS geometry.
 	// Make the plane a little larger than the actual number of primitives in each dimension.
-	const XMUINT3 NUM_AABB = XMUINT3(700, 1, 700);
+	const XMUINT3 NUM_AABB = XMUINT3(1, 1, 1);
 	const XMFLOAT3 fWidth = XMFLOAT3(
 		NUM_AABB.x * c_aabbWidth + (NUM_AABB.x - 1) * c_aabbDistance,
 		NUM_AABB.y * c_aabbWidth + (NUM_AABB.y - 1) * c_aabbDistance,
@@ -842,13 +877,13 @@ void D3D12RaytracingSimpleLighting::CreateDescriptorHeap()
     // Allocate a heap for 5 descriptors:
     // numGeometry * 2 - vertex and index buffer SRVs
     // 1 - raytracing output texture SRV
-    // 2 - bottom and top level acceleration structure fallback wrapped pointer UAVs
+    // 3 - 2x bottom and top level acceleration structure fallback wrapped pointer UAVs
 #ifdef SHOW_CUBE
 	UINT numGeometry = 1;
 #else
 	UINT numGeometry = m_sponza->m_obj_count;
 #endif
-	descriptorHeapDesc.NumDescriptors = numGeometry * 2 + 3;
+	descriptorHeapDesc.NumDescriptors = numGeometry * 2 + 4;
     descriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     descriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     descriptorHeapDesc.NodeMask = 0;
@@ -950,12 +985,15 @@ void D3D12RaytracingSimpleLighting::BuildShaderTables()
     void* rayGenShaderIdentifier;
     void* missShaderIdentifier;
     void* hitGroupShaderIdentifier;
+	void* aabbHitGroupShaderIdentifier;
 
     auto GetShaderIdentifiers = [&](auto* stateObjectProperties)
     {
         rayGenShaderIdentifier = stateObjectProperties->GetShaderIdentifier(c_raygenShaderName);
         missShaderIdentifier = stateObjectProperties->GetShaderIdentifier(c_missShaderName);
         hitGroupShaderIdentifier = stateObjectProperties->GetShaderIdentifier(c_hitGroupName);
+		aabbHitGroupShaderIdentifier = stateObjectProperties->GetShaderIdentifier(c_aabbHitGroupName);
+		//aabbIntersectionShaderIdentifier = stateObjectProperties->GetShaderIdentifier(c_aabbIntersectionShaderName);
     };
 
     // Get shader identifiers.
@@ -973,72 +1011,101 @@ void D3D12RaytracingSimpleLighting::BuildShaderTables()
         shaderIdentifierSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
     }
 
-    // Ray gen shader table
+    // Ray gen shader table.
     {
         UINT numShaderRecords = 1;
         UINT shaderRecordSize = shaderIdentifierSize;
+
         ShaderTable rayGenShaderTable(device, numShaderRecords, shaderRecordSize, L"RayGenShaderTable");
         rayGenShaderTable.push_back(ShaderRecord(rayGenShaderIdentifier, shaderIdentifierSize));
         m_rayGenShaderTable = rayGenShaderTable.GetResource();
     }
 
-    // Miss shader table
+    // Miss shader table.
     {
         UINT numShaderRecords = 1;
         UINT shaderRecordSize = shaderIdentifierSize;
+
         ShaderTable missShaderTable(device, numShaderRecords, shaderRecordSize, L"MissShaderTable");
         missShaderTable.push_back(ShaderRecord(missShaderIdentifier, shaderIdentifierSize));
         m_missShaderTable = missShaderTable.GetResource();
     }
 
-    // Hit group shader table
+	// Hit group shader table.
     {
-        struct RootArguments {
-            CubeConstantBuffer cb;
-			/*WRAPPED_GPU_POINTER indexBufferGPUHandle;
-			WRAPPED_GPU_POINTER vertexBufferGPUHandle;*/
+		struct TriangleRootArguments {
+			CubeConstantBuffer cb;
 			//D3D12_GPU_DESCRIPTOR_HANDLE indexBufferGPUHandle;
 			D3D12_GPU_DESCRIPTOR_HANDLE vertexBufferGPUHandle;
-        } rootArguments;
+		} triangleRootArguments;
+
+		struct AABBRootArguments {
+			CubeConstantBuffer cb;
+			//D3D12_GPU_DESCRIPTOR_HANDLE indexBufferGPUHandle;
+			Sphere sphereConstant;
+		} aabbRootArguments;
 
 #ifdef SHOW_CUBE
-		rootArguments.cb = m_cubeCB;
-		UINT numShaderRecords = 1;
+		UINT numShaderRecords = 1 + 1; // sphere + cube
 #else
-		rootArguments.cb = m_cubeCB;
-		UINT numShaderRecords = m_sponza->m_obj_count;
+		UINT numShaderRecords = m_sponza->m_obj_count + 1; // + 1 for sphere
 #endif
-        UINT shaderRecordSize = shaderIdentifierSize + sizeof(rootArguments);
-        ShaderTable hitGroupShaderTable(device, numShaderRecords, shaderRecordSize, L"HitGroupShaderTable");
-		for (int i = 0; i < numShaderRecords; i++) {
+		UINT shaderRecordSize = shaderIdentifierSize + max(sizeof(triangleRootArguments), sizeof(aabbRootArguments));
+		ShaderTable hitGroupShaderTable(device, numShaderRecords, shaderRecordSize, L"HitGroupShaderTable");
+
+		// Triangle Hit group shader table
+		{
 #ifdef SHOW_CUBE
-			//memcpy(&rootArguments.vertexBufferGPUHandle, &m_indexBuffer.gpuDescriptorHandle, sizeof(m_indexBuffer.gpuDescriptorHandle));
-
-
-			if (m_raytracingAPI == RaytracingAPI::FallbackLayer)
-			{
-				//rootArguments.indexBufferGPUHandle = CreateFallbackWrappedPointerForBuffer(&m_cubeIndexBuffer, ARRAYSIZE(m_cubeIndices), sizeof(m_cubeIndices[0]));
-				//rootArguments.vertexBufferGPUHandle = CreateFallbackWrappedPointerForBuffer(&m_cubeVertexBuffer, ARRAYSIZE(m_cubeVertices), sizeof(m_cubeVertices[0]));
-				//rootArguments.indexBufferGPUHandle = m_cubeIndexBuffer.gpuDescriptorHandle;
-				//rootArguments.vertexBufferGPUHandle = m_cubeVertexBuffer.gpuDescriptorHandle;
-				rootArguments.vertexBufferGPUHandle = m_cubeIndexBuffer.gpuDescriptorHandle;
-			}
-			else
-			{
-				//rootArguments.indexBufferGPUHandle = m_cubeIndexBuffer.gpuDescriptorHandle;
-				//rootArguments.vertexBufferGPUHandle = m_cubeVertexBuffer.gpuDescriptorHandle;
-				rootArguments.vertexBufferGPUHandle = m_cubeIndexBuffer.gpuDescriptorHandle;
-			}
+			triangleRootArguments.cb = m_cubeCB;
+			UINT numTriangleShaderRecords = 1;
 #else
-			//rootArguments.indexBufferGPUHandle = m_sponza->m_indexBuffer[i].gpuDescriptorHandle;
-			rootArguments.vertexBufferGPUHandle = m_sponza->m_indexBuffer[i].gpuDescriptorHandle;
+			triangleRootArguments.cb = m_cubeCB;
+			UINT numTriangleShaderRecords = m_sponza->m_obj_count;
 #endif
-			hitGroupShaderTable.push_back(ShaderRecord(hitGroupShaderIdentifier, shaderIdentifierSize, &rootArguments, sizeof(rootArguments)));
+			for (UINT i = 0; i < numTriangleShaderRecords; i++)
+			{
+#ifdef SHOW_CUBE
+				//rootArguments.indexBufferGPUHandle = m_cubeIndexBuffer.gpuDescriptorHandle;
+				//rootArguments.vertexBufferGPUHandle = m_cubeVertexBuffer.gpuDescriptorHandle;
+				triangleRootArguments.vertexBufferGPUHandle = m_cubeIndexBuffer.gpuDescriptorHandle;
+#else
+				triangleRootArguments.vertexBufferGPUHandle = m_sponza->m_indexBuffer[i].gpuDescriptorHandle;
+#endif
+				hitGroupShaderTable.push_back(ShaderRecord(hitGroupShaderIdentifier, shaderIdentifierSize, &triangleRootArguments, sizeof(triangleRootArguments)));
+			}
 		}
-        
-        m_hitGroupShaderTable = hitGroupShaderTable.GetResource();
+
+		// AABB geometry hit groups.
+		{
+			//LocalRootSignature::AABB::RootArguments rootArgs;
+			//UINT instanceIndex = 0;
+			UINT numAABBShaderRecords = 1; // Only 1 sphere right now.
+
+			// Create a shader record for each primitive.
+			for (UINT i = 0; i < numAABBShaderRecords; i++)
+			{
+				// Primitives for each intersection shader.
+				//for (UINT primitiveIndex = 0; primitiveIndex < numPrimitiveTypes; primitiveIndex++, instanceIndex++)
+				//{
+				//	rootArgs.materialCb = m_aabbMaterialCB[instanceIndex];
+				//	rootArgs.aabbCB.instanceIndex = instanceIndex;
+				//	rootArgs.aabbCB.primitiveType = primitiveIndex;
+				aabbRootArguments.cb = m_cubeCB;
+				aabbRootArguments.sphereConstant = m_sphere;
+				
+				hitGroupShaderTable.push_back(ShaderRecord(aabbHitGroupShaderIdentifier, shaderIdentifierSize, &aabbRootArguments, sizeof(aabbRootArguments)));
+				// Ray types.
+				/*for (UINT r = 0; r < RayType::Count; r++)
+				{
+					auto& hitGroupShaderID = hitGroupShaderIDs_AABBGeometry[iShader][r];
+					hitGroupShaderTable.push_back(ShaderRecord(hitGroupShaderID, shaderIDSize, &rootArgs, sizeof(rootArgs)));
+				}*/
+				//}
+			}
+		}
+
 		m_hitGroupShaderTableStrideInBytes = hitGroupShaderTable.GetShaderRecordSize();
-		//hitGroupShaderTable.DebugPrint(shaderIdToStringMap);
+        m_hitGroupShaderTable = hitGroupShaderTable.GetResource();
     }
 }
 

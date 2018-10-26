@@ -41,7 +41,7 @@ namespace TriangleLocalRootSignatureParams {
 namespace AABBLocalRootSignatureParams {
 	enum Value {
 		CubeConstantSlot = 0,
-		GeometryIndex,
+		SphereConstantSlot,
 		Count
 	};
 }
@@ -82,8 +82,8 @@ private:
 
 	// Constants.
 	const UINT NUM_BLAS = 2;          // Triangle + AABB bottom-level AS.
-	const float c_aabbWidth = 2;      // AABB width.
-	const float c_aabbDistance = 2;   // Distance between AABBs.
+	const float c_aabbWidth = 1;      // AABB width.
+	const float c_aabbDistance = 1;   // Distance between AABBs.
 
     // We'll allocate space for several of these and they will need to be padded for alignment.
     static_assert(sizeof(SceneConstantBuffer) < D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT, "Checking the size here.");
@@ -120,6 +120,8 @@ private:
     // Raytracing scene
     SceneConstantBuffer m_sceneCB[FrameCount];
     CubeConstantBuffer m_cubeCB;
+	StructuredBuffer<PrimitiveInstancePerFrameBuffer> m_aabbPrimitiveAttributeBuffer;
+	std::vector<D3D12_RAYTRACING_AABB> m_aabbs;
 
 	// Non-triangle scene
 	D3DBuffer m_aabbBuffer;
@@ -128,6 +130,7 @@ private:
     D3DBuffer m_cubeIndexBuffer;
     D3DBuffer m_cubeVertexBuffer;
 	std::shared_ptr<Shape> m_sponza;
+	Sphere m_sphere;
 	UINT m_geometryDescriptorIndex;
 
 	// Cube indices.
@@ -275,6 +278,7 @@ private:
     void CreateRaytracingPipelineStateObject();
     void CreateDescriptorHeap();
     void CreateRaytracingOutputResource();
+	void BuildProceduralGeometryAABBs();
     void BuildGeometry();
 	void BuildGeometryDescsForBottomLevelAS(std::array<std::vector<D3D12_RAYTRACING_GEOMETRY_DESC>, BottomLevelASType::Count>& geometryDescs);
 	AccelerationStructureBuffers BuildBottomLevelAS(const std::vector<D3D12_RAYTRACING_GEOMETRY_DESC>& geometryDescs, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE);

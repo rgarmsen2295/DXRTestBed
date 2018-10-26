@@ -29,6 +29,7 @@ struct ProceduralPrimitiveAttributes
 struct RayPayload
 {
 	XMFLOAT4 color;
+	XMFLOAT4 type;
 	//UINT   recursionDepth;
 };
 
@@ -59,6 +60,8 @@ struct Sphere
 {
 	XMFLOAT4 info; // xyz - center position, w - radius
 };
+
+//typedef UINT SphereIndex;
 
 // Attributes per primitive type.
 struct PrimitiveConstantBuffer

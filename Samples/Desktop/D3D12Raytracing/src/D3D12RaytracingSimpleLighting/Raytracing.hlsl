@@ -26,10 +26,16 @@ RWTexture2D<float4> RenderTarget : register(u0);
 //ByteAddressBuffer Indices : register(t1, space0);
 
 ConstantBuffer<SceneConstantBuffer> g_sceneCB : register(b0);
+
+// Triangle and sphere resources
 ConstantBuffer<CubeConstantBuffer> g_cubeCB : register(b1);
 
+// Triangle Resources
 StructuredBuffer<Index> Indices : register(t1, space0);
 StructuredBuffer<Vertex> Vertices : register(t2, space0);
+
+// Sphere Resources
+ConstantBuffer<Sphere> l_sphereCB : register(b2);
 
 // Load three 16 bit indices from a byte addressed buffer.
 //uint3 Load3x16BitIndices(uint offsetBytes)
@@ -129,11 +135,16 @@ void MyRaygenShader()
     // TMin should be kept small to prevent missing geometry at close contact areas.
     ray.TMin = 0.001;
     ray.TMax = 10000.0;
-    RayPayload payload = { float4(0, 0, 0, 0) };
-    TraceRay(Scene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, ~0, 0, 1, 0, ray, payload);
+    RayPayload payload = { float4(0, 0, 0, 0), float4(0, 0, 0, 0) };
+    TraceRay(Scene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES /*RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH*/, ~0, 0, 1, 0, ray, payload);
 
     // Write the raytraced color to the output texture.
-    RenderTarget[DispatchRaysIndex().xy] = payload.color;
+    //if (payload.type.x == 1.0)
+    //{
+    //    RenderTarget[DispatchRaysIndex().xy] = payload.color;
+    //}
+    
+    RenderTarget[DispatchRaysIndex().xy] = payload.color;//payload.type; //.x == 1.0 ? payload.color : float4(0.0f, 0.2f, 0.4f, 1.0f);
 }
 
 [shader("closesthit")]
@@ -169,13 +180,15 @@ void MyClosestHitShader(inout RayPayload payload, in TriangleAttributes attr)
     //triangleNormal.xyz = PrimitiveIndex() / 100000.0;
     //payload.color = float4(abs(triangleNormal), 1.0);
     payload.color = color;
+    payload.type.x = 0.0;
 }
 
 [shader("closesthit")]
 void AABBClosestHitShader(inout RayPayload payload, in ProceduralPrimitiveAttributes attr)
 {
     // TODO(rgarmsen2295): Do something useful here.
-    payload.color = float4(1.0, 0.0, 0.0, 1.0);
+    payload.color = CalculateDiffuseLighting(HitWorldPosition(), attr.normal);
+    payload.type.x = 1.0;
 }
 
 void swap(inout float a, inout float b)
@@ -250,12 +263,31 @@ bool IsAValidHit(in Ray ray, in float thit, in float3 hitSurfaceNormal)
     return IsInRange(thit, RayTMin(), RayTCurrent()) && !IsCulled(ray, hitSurfaceNormal);
 }
 
+// Get ray in AABB's local space.
+Ray GetRayInAABBPrimitiveLocalSpace()
+{
+    //PrimitiveInstancePerFrameBuffer attr = g_AABBPrimitiveAttributes[l_aabbCB.instanceIndex];
+
+    // Retrieve a ray origin position and direction in bottom level AS space 
+    // and transform them into the AABB primitive's local space.
+    Ray ray;
+    ray.origin = ObjectRayOrigin();//mul(float4(ObjectRayOrigin(), 1), attr.bottomLevelASToLocalSpace).xyz;
+    ray.direction = ObjectRayDirection();//mul(ObjectRayDirection(), (float3x3) attr.bottomLevelASToLocalSpace);
+    return ray;
+}
+
 [shader("intersection")]
 void SphereIntersectionShader()
 {
-    float3 center = float3(0, 0, 0);
-    float radius = 1;
-    Ray ray;
+    ProceduralPrimitiveAttributes attr;
+    
+    //attr.normal = float3(1.0, 1.0, 1.0);
+    //ReportHit(RayTMin() + 1.0, /*hitKind*/0, attr);
+    //return;
+
+    float3 center = l_sphereCB.info.xyz;
+    float radius = l_sphereCB.info.w;
+    Ray ray = GetRayInAABBPrimitiveLocalSpace();
 
     float t0, t1; // solutions for t if the ray intersects 
 
@@ -264,7 +296,6 @@ void SphereIntersectionShader()
         return;
     }
     float tmax = t1;
-    ProceduralPrimitiveAttributes attr;
     if (t0 < RayTMin())
     {
         // t0 is before RayTMin, let's use t1 instead .
