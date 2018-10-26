@@ -466,7 +466,7 @@ void D3D12RaytracingSimpleLighting::BuildProceduralGeometryAABBs()
 
 	// Set up Sphere geometry info.
 	{
-		m_sphere.info = XMFLOAT4(0.0, 0.0, 0.0, 10.0);
+		m_sphere.info = XMFLOAT4(10.0, 0.0, 10.0, 5.0);
 	}
 
 	// Set up Sphere AABBs.
@@ -497,11 +497,8 @@ void D3D12RaytracingSimpleLighting::BuildGeometry()
 	auto commandQueue = m_deviceResources->GetCommandQueue();
 	auto commandAllocator = m_deviceResources->GetCommandAllocator();
 
-#define SHOW_CUBE
-#ifdef SHOW_CUBE
-	AllocateUploadBuffer(device, m_cubeIndices, sizeof(m_cubeIndices), &m_cubeIndexBuffer.resource);
-	AllocateUploadBuffer(device, m_cubeVertices, sizeof(m_cubeVertices), &m_cubeVertexBuffer.resource);
-#else
+//#define SHOW_CUBE
+#ifndef SHOW_CUBE
 	m_sponza = std::make_shared<Shape>();
 
 	std::string resourcePath = "resources/";
@@ -547,13 +544,13 @@ void D3D12RaytracingSimpleLighting::BuildGeometryDescsForBottomLevelAS(std::arra
 		// Note: When rays encounter opaque geometry an any hit shader will not be executed whether it is present or not.
 		geometryDesc.Flags = D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE;
 
-		D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC bottomLevelBuildDesc = {};
+		/*D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC bottomLevelBuildDesc = {};
 		D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS &bottomLevelInputs = bottomLevelBuildDesc.Inputs;
 		bottomLevelInputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
 		bottomLevelInputs.Flags = buildFlags;
 		bottomLevelInputs.NumDescs = 1;
 		bottomLevelInputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
-		bottomLevelInputs.pGeometryDescs = &geometryDesc;
+		bottomLevelInputs.pGeometryDescs = &geometryDesc;*/
 	}
 #else
 	// Triangle geometry desc
@@ -584,13 +581,13 @@ void D3D12RaytracingSimpleLighting::BuildGeometryDescsForBottomLevelAS(std::arra
 			//sponzaGeometryDescs.push_back(geometryDesc);
 		}
 
-		D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC bottomLevelBuildDesc = {};
+		/*D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC bottomLevelBuildDesc = {};
 		D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS &bottomLevelInputs = bottomLevelBuildDesc.Inputs;
 		bottomLevelInputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
 		bottomLevelInputs.Flags = buildFlags;
 		bottomLevelInputs.NumDescs = geometryDescs[BottomLevelASType::Triangle].size();
 		bottomLevelInputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
-		bottomLevelInputs.pGeometryDescs = geometryDescs[BottomLevelASType::Triangle].data();
+		bottomLevelInputs.pGeometryDescs = geometryDescs[BottomLevelASType::Triangle].data();*/
 	}
 #endif
 
@@ -736,7 +733,7 @@ void D3D12RaytracingSimpleLighting::BuildBotomLevelASInstanceDescs(BLASPtrType *
 		instanceDesc.InstanceMask = 1;
 
 		// Set hit group offset to beyond the shader records for the triangle AABB.
-		instanceDesc.InstanceContributionToHitGroupIndex = BottomLevelASType::AABB * 1;// RayType::Count; change if shadow rays, etc introduced.
+		instanceDesc.InstanceContributionToHitGroupIndex = BottomLevelASType::AABB * m_sponza->m_obj_count;// * RayType::Count; change if shadow rays, etc introduced.
 		instanceDesc.AccelerationStructure = bottomLevelASaddresses[BottomLevelASType::AABB];
 		instanceDesc.Transform[0][0] = instanceDesc.Transform[1][1] = instanceDesc.Transform[2][2] = 1;
 
@@ -877,7 +874,7 @@ void D3D12RaytracingSimpleLighting::CreateDescriptorHeap()
     // Allocate a heap for 5 descriptors:
     // numGeometry * 2 - vertex and index buffer SRVs
     // 1 - raytracing output texture SRV
-    // 3 - 2x bottom and top level acceleration structure fallback wrapped pointer UAVs
+    // 3 - 2 bottom and 1 top level acceleration structure fallback wrapped pointer UAVs
 #ifdef SHOW_CUBE
 	UINT numGeometry = 1;
 #else
@@ -895,6 +892,10 @@ void D3D12RaytracingSimpleLighting::CreateDescriptorHeap()
 	// Vertex buffer is passed to the shader along with index buffer as a descriptor table.
 	// Vertex buffer descriptor must follow index buffer descriptor in the descriptor heap.
 #ifdef SHOW_CUBE
+
+	AllocateUploadBuffer(device, m_cubeIndices, sizeof(m_cubeIndices), &m_cubeIndexBuffer.resource);
+	AllocateUploadBuffer(device, m_cubeVertices, sizeof(m_cubeVertices), &m_cubeVertexBuffer.resource);
+
 	UINT descriptorIndexIB = CreateBufferSRV(&m_cubeIndexBuffer, ARRAYSIZE(m_cubeIndices), sizeof(m_cubeIndices[0]));
 	UINT descriptorIndexVB = CreateBufferSRV(&m_cubeVertexBuffer, ARRAYSIZE(m_cubeVertices), sizeof(m_cubeVertices[0]));
 	ThrowIfFalse(descriptorIndexVB == descriptorIndexIB + 1, L"Vertex Buffer descriptor index must follow that of Index Buffer descriptor index!");
@@ -1046,10 +1047,14 @@ void D3D12RaytracingSimpleLighting::BuildShaderTables()
 		} aabbRootArguments;
 
 #ifdef SHOW_CUBE
-		UINT numShaderRecords = 1 + 1; // sphere + cube
+		UINT numTriangleShaderRecords = 1;
 #else
-		UINT numShaderRecords = m_sponza->m_obj_count + 1; // + 1 for sphere
+		UINT numTriangleShaderRecords = m_sponza->m_obj_count;
 #endif
+		UINT numAABBShaderRecords = 1; // Only 1 sphere right now.
+
+		UINT numShaderRecords = numTriangleShaderRecords + numAABBShaderRecords; // + 1 for sphere
+
 		UINT shaderRecordSize = shaderIdentifierSize + max(sizeof(triangleRootArguments), sizeof(aabbRootArguments));
 		ShaderTable hitGroupShaderTable(device, numShaderRecords, shaderRecordSize, L"HitGroupShaderTable");
 
@@ -1057,10 +1062,8 @@ void D3D12RaytracingSimpleLighting::BuildShaderTables()
 		{
 #ifdef SHOW_CUBE
 			triangleRootArguments.cb = m_cubeCB;
-			UINT numTriangleShaderRecords = 1;
 #else
 			triangleRootArguments.cb = m_cubeCB;
-			UINT numTriangleShaderRecords = m_sponza->m_obj_count;
 #endif
 			for (UINT i = 0; i < numTriangleShaderRecords; i++)
 			{
@@ -1079,7 +1082,6 @@ void D3D12RaytracingSimpleLighting::BuildShaderTables()
 		{
 			//LocalRootSignature::AABB::RootArguments rootArgs;
 			//UINT instanceIndex = 0;
-			UINT numAABBShaderRecords = 1; // Only 1 sphere right now.
 
 			// Create a shader record for each primitive.
 			for (UINT i = 0; i < numAABBShaderRecords; i++)
