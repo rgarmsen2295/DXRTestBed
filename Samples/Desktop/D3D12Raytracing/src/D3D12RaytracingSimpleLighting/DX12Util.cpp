@@ -58,7 +58,7 @@ ComPtr<ID3D12Resource> DX12Util::CreateDefaultBuffer(
 }
 
 std::shared_ptr<Texture> DX12Util::loadTexture(
-	ComPtr<ID3D12Device> device,
+	ID3D12Device *device,
 	std::string & textureName,
 	std::string & mtlPath,
 	unsigned char *(loadimage)(char const *, int *, int *, int *, int))
@@ -89,7 +89,6 @@ std::shared_ptr<Texture> DX12Util::loadTexture(
 	textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 	textureDesc.Width = width;
 	textureDesc.Height = height;
-	textureDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
 	textureDesc.DepthOrArraySize = 1;
 	textureDesc.SampleDesc.Count = 1;
 	textureDesc.SampleDesc.Quality = 0;
@@ -118,40 +117,40 @@ std::shared_ptr<Texture> DX12Util::loadTexture(
 	return texture;
 }
 
-void DX12Util::initTextures(
-	ComPtr<ID3D12Device> device,
-	ResourceUploadBatch & resourceUploader,
-	ComPtr<ID3D12DescriptorHeap> srvHeap,
-	UINT srvDescriptorSize,
-	std::shared_ptr<Texture> & texture,
-	UINT nextSrvHeapIndex)
-{	
-	// Upload base texture.
-	resourceUploader.Upload(
-		texture->Resource.Get(),
-		0,
-		&texture->data,
-		1
-	);
-
-	// Create mip maps.
-	resourceUploader.Transition(
-		texture->Resource.Get(),
-		D3D12_RESOURCE_STATE_COPY_DEST,
-		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-	resourceUploader.GenerateMips(texture->Resource.Get());
-
-	// Assign SRV location in heap to texture for later look up.
-	CD3DX12_CPU_DESCRIPTOR_HANDLE srvHeapHandle(srvHeap->GetCPUDescriptorHandleForHeapStart(), nextSrvHeapIndex, srvDescriptorSize);
-	texture->srvHeapIndex = nextSrvHeapIndex;
-	nextSrvHeapIndex++;
-
-	// Describe and create a SRV for the texture (and mip maps).
-	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-	srvDesc.Format = texture->desc.Format;
-	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-	srvDesc.Texture2D.MostDetailedMip = 0;
-	srvDesc.Texture2D.MipLevels = -1;
-	device->CreateShaderResourceView(texture->Resource.Get(), &srvDesc, srvHeapHandle);
-}
+//void DX12Util::initTexture(
+//	ID3D12Device *device,
+//	ResourceUploadBatch & resourceUploader,
+//	ComPtr<ID3D12DescriptorHeap> srvHeap,
+//	UINT srvDescriptorSize,
+//	std::shared_ptr<Texture> & texture,
+//	UINT nextSrvHeapIndex)
+//{	
+//	// Upload base texture.
+//	resourceUploader.Upload(
+//		texture->Resource.Get(),
+//		0,
+//		&texture->data,
+//		1
+//	);
+//
+//	// Create mip maps.
+//	resourceUploader.Transition(
+//		texture->Resource.Get(),
+//		D3D12_RESOURCE_STATE_COPY_DEST,
+//		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+//	resourceUploader.GenerateMips(texture->Resource.Get());
+//
+//	// Assign SRV location in heap to texture for later look up.
+//	CD3DX12_CPU_DESCRIPTOR_HANDLE srvHeapHandle(srvHeap->GetCPUDescriptorHandleForHeapStart(), nextSrvHeapIndex, srvDescriptorSize);
+//	texture->srvHeapIndex = nextSrvHeapIndex;
+//	nextSrvHeapIndex++;
+//
+//	// Describe and create a SRV for the texture (and mip maps).
+//	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+//	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+//	srvDesc.Format = texture->desc.Format;
+//	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+//	srvDesc.Texture2D.MostDetailedMip = 0;
+//	srvDesc.Texture2D.MipLevels = -1;
+//	device->CreateShaderResourceView(texture->Resource.Get(), &srvDesc, srvHeapHandle);
+//}

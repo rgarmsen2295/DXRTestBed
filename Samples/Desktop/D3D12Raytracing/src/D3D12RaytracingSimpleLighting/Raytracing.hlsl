@@ -21,59 +21,23 @@ struct Ray
     float3 direction;
 };
 
+// Global Resources
 RaytracingAccelerationStructure Scene : register(t0, space0);
 RWTexture2D<float4> RenderTarget : register(u0);
 //ByteAddressBuffer Indices : register(t1, space0);
-
+SamplerState g_sampler : register(s0, space0);
 ConstantBuffer<SceneConstantBuffer> g_sceneCB : register(b0);
 
-// Triangle and sphere resources
-ConstantBuffer<CubeConstantBuffer> g_cubeCB : register(b1);
-
-// Triangle Resources
+// Triangle Local Resources
+ConstantBuffer<CubeConstantBuffer> l_cubeCB : register(b1);
 StructuredBuffer<Index> Indices : register(t1, space0);
 StructuredBuffer<Vertex> Vertices : register(t2, space0);
 
-// Sphere Resources
+// Sphere Local Resources
 ConstantBuffer<Sphere> l_sphereCB : register(b2);
-
-// Load three 16 bit indices from a byte addressed buffer.
-//uint3 Load3x16BitIndices(uint offsetBytes)
-//{
-//    uint3 indices;
-
-//    // ByteAdressBuffer loads must be aligned at a 4 byte boundary.
-//    // Since we need to read three 16 bit indices: { 0, 1, 2 } 
-//    // aligned at a 4 byte boundary as: { 0 1 } { 2 0 } { 1 2 } { 0 1 } ...
-//    // we will load 8 bytes (~ 4 indices { a b | c d }) to handle two possible index triplet layouts,
-//    // based on first index's offsetBytes being aligned at the 4 byte boundary or not:
-//    //  Aligned:     { 0 1 | 2 - }
-//    //  Not aligned: { - 0 | 1 2 }
-//    const uint dwordAlignedOffset = offsetBytes & ~3;
-//    const uint2 four16BitIndices = Indices.Load2(dwordAlignedOffset);
- 
-//    // Aligned: { 0 1 | 2 - } => retrieve first three 16bit indices
-//    if (dwordAlignedOffset == offsetBytes)
-//    {
-//        indices.x = four16BitIndices.x & 0xffff;
-//        indices.y = (four16BitIndices.x >> 16) & 0xffff;
-//        indices.z = four16BitIndices.y & 0xffff;
-//    }
-//    else // Not aligned: { - 0 | 1 2 } => retrieve last three 16bit indices
-//    {
-//        indices.x = (four16BitIndices.x >> 16) & 0xffff;
-//        indices.y = four16BitIndices.y & 0xffff;
-//        indices.z = (four16BitIndices.y >> 16) & 0xffff;
-//    }
-
-//    return indices;
-//}
+Texture2D<float4> l_sphereDiffuseTex : register(t3, space0);
 
 typedef BuiltInTriangleIntersectionAttributes TriangleAttributes;
-//struct RayPayload
-//{
-//    float4 color;
-//};
 
 // Retrieve hit world position.
 float3 HitWorldPosition()
@@ -114,7 +78,7 @@ float4 CalculateDiffuseLighting(float3 hitPosition, float3 normal)
     // Diffuse contribution.
     float fNDotL = max(0.0f, dot(pixelToLight, normal));
 
-    return g_cubeCB.albedo * g_sceneCB.lightDiffuseColor * fNDotL;
+    return g_sceneCB.lightDiffuseColor * fNDotL;
 }
 
 [shader("raygeneration")]
@@ -135,16 +99,10 @@ void MyRaygenShader()
     // TMin should be kept small to prevent missing geometry at close contact areas.
     ray.TMin = 0.001;
     ray.TMax = 10000.0;
-    RayPayload payload = { float4(0, 0, 0, 0), float4(0, 0, 0, 0) };
-    TraceRay(Scene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES /*RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH*/, ~0, 0, 1, 0, ray, payload);
-
-    // Write the raytraced color to the output texture.
-    //if (payload.type.x == 1.0)
-    //{
-    //    RenderTarget[DispatchRaysIndex().xy] = payload.color;
-    //}
+    RayPayload payload = { float4(0, 0, 0, 0) };
+    TraceRay(Scene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, ~0, 0, 1, 0, ray, payload);
     
-    RenderTarget[DispatchRaysIndex().xy] = payload.color;//payload.type; //.x == 1.0 ? payload.color : float4(0.0f, 0.2f, 0.4f, 1.0f);
+    RenderTarget[DispatchRaysIndex().xy] = payload.color;
 }
 
 [shader("closesthit")]
@@ -177,18 +135,61 @@ void MyClosestHitShader(inout RayPayload payload, in TriangleAttributes attr)
 
     float4 diffuseColor = CalculateDiffuseLighting(hitPosition, triangleNormal);
     float4 color = g_sceneCB.lightAmbientColor + diffuseColor;
-    //triangleNormal.xyz = PrimitiveIndex() / 100000.0;
-    //payload.color = float4(abs(triangleNormal), 1.0);
+
     payload.color = color;
-    payload.type.x = 0.0;
+}
+
+// Calculate ray differentials.
+//void CalculateRayDifferentials(out float2 ddx_uv, out float2 ddy_uv, in float2 uv, in float3 hitPosition, in float3 surfaceNormal, in float3 cameraPosition, in float4x4 projectionToWorld)
+//{
+//    // Compute ray differentials by intersecting the tangent plane to the  surface.
+//    Ray ddx = GenerateCameraRay(DispatchRaysIndex().xy + uint2(1, 0), cameraPosition, projectionToWorld);
+//    Ray ddy = GenerateCameraRay(DispatchRaysIndex().xy + uint2(0, 1), cameraPosition, projectionToWorld);
+
+//    // Compute ray differentials.
+//    float3 ddx_pos = ddx.origin - ddx.direction * dot(ddx.origin - hitPosition, surfaceNormal) / dot(ddx.direction, surfaceNormal);
+//    float3 ddy_pos = ddy.origin - ddy.direction * dot(ddy.origin - hitPosition, surfaceNormal) / dot(ddy.direction, surfaceNormal);
+
+//    // Calculate texture sampling footprint.
+//    ddx_uv = TexCoords(ddx_pos) - uv;
+//    ddy_uv = TexCoords(ddy_pos) - uv;
+//}
+
+// Source: https://gamedev.stackexchange.com/questions/114412/how-to-get-uv-coordinates-for-sphere-cylindrical-projection
+float2 GetSphereTexCoords(in float3 surfacePosition, in float3 normal)
+{
+    static const float PI = 3.14159265f;
+
+    float2 uv;
+    uv.x = atan2(normal.x, normal.z) / (2 * PI) + 0.5;
+    uv.y = normal.y * 0.5 + 0.5;
+
+    return uv;
+}
+
+float4 GetSphereTextureColor(in float3 hitPosition, in float3 normal)
+{
+    float2 ddx_uv;
+    float2 ddy_uv;
+    float2 uv = clamp(GetSphereTexCoords(hitPosition, normal), 0.0, 1.0);
+
+    uint2 texDimsTemp;
+    l_sphereDiffuseTex.GetDimensions(texDimsTemp.x, texDimsTemp.y);
+
+    int2 texDims = texDimsTemp - 1;
+
+    //CalculateRayDifferentials(ddx_uv, ddy_uv, uv, hitPosition, surfaceNormal, cameraPosition, projectionToWorld);
+    return l_sphereDiffuseTex.Load(int3(int2(uv * texDims), 0.0));
 }
 
 [shader("closesthit")]
 void AABBClosestHitShader(inout RayPayload payload, in ProceduralPrimitiveAttributes attr)
 {
-    // TODO(rgarmsen2295): Do something useful here.
-    payload.color = CalculateDiffuseLighting(HitWorldPosition(), attr.normal);
-    payload.type.x = 1.0;
+    float3 hitPosition = HitWorldPosition();
+
+    float4 textureColor = GetSphereTextureColor(hitPosition, attr.normal);
+
+    payload.color = textureColor /** CalculateDiffuseLighting(HitWorldPosition(), attr.normal)*/;
 }
 
 void swap(inout float a, inout float b)

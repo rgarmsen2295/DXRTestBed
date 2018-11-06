@@ -89,6 +89,7 @@
     </CustomBuild>
     <FxCompile>
       <EntryPointName />
+      <ShaderModel>6.3</ShaderModel>
     </FxCompile>
     <PostBuildEvent>
       <Command>cd "$(SolutionDir)..\tools\x64\"
@@ -142,6 +143,7 @@ PrebuildCheck.bat</Command>
     </CustomBuild>
     <FxCompile>
       <EntryPointName />
+      <ShaderModel>6.3</ShaderModel>
     </FxCompile>
     <PostBuildEvent>
       <Command>cd "$(SolutionDir)..\tools\x64\"
@@ -174,6 +176,7 @@ PrebuildCheck.bat</Command>
     <ClInclude Include="RaytracingHlslCompat.h" />
     <ClInclude Include="RaytracingSceneDefines.h" />
     <ClInclude Include="Shape.h" />
+    <ClInclude Include="stb_image.h" />
     <ClInclude Include="StepTimer.h" />
     <ClInclude Include="Texture.h" />
     <ClInclude Include="tiny_obj_loader.h" />
@@ -210,6 +213,8 @@ PrebuildCheck.bat</Command>
       <HeaderFileOutput Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(IntDir)\CompiledShaders\%(Filename).hlsl.h</HeaderFileOutput>
       <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">/Zpr %(AdditionalOptions)</AdditionalOptions>
       <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Release|x64'">/Zpr %(AdditionalOptions)</AdditionalOptions>
+      <EnableUnboundedDescriptorTables Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</EnableUnboundedDescriptorTables>
+      <EnableUnboundedDescriptorTables Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</EnableUnboundedDescriptorTables>
     </FxCompile>
   </ItemGroup>
   <ItemGroup>
@@ -223,14 +228,14 @@ PrebuildCheck.bat</Command>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
-    <Import Project="..\..\..\..\..\Packages\WinPixEventRuntime.1.0.180612001\build\WinPixEventRuntime.targets" Condition="Exists('..\..\..\..\..\Packages\WinPixEventRuntime.1.0.180612001\build\WinPixEventRuntime.targets')" />
-    <Import Project="..\..\..\..\..\Packages\directxtk12_desktop_2015.2018.9.13.1\build\native\directxtk12_desktop_2015.targets" Condition="Exists('..\..\..\..\..\Packages\directxtk12_desktop_2015.2018.9.13.1\build\native\directxtk12_desktop_2015.targets')" />
+    <Import Project="..\..\..\..\..\Packages\WinPixEventRuntime.1.0.181027001\build\WinPixEventRuntime.targets" Condition="Exists('..\..\..\..\..\Packages\WinPixEventRuntime.1.0.181027001\build\WinPixEventRuntime.targets')" />
+    <Import Project="..\..\..\..\..\Packages\directxtk12_desktop_2015.2018.10.31.1\build\native\directxtk12_desktop_2015.targets" Condition="Exists('..\..\..\..\..\Packages\directxtk12_desktop_2015.2018.10.31.1\build\native\directxtk12_desktop_2015.targets')" />
   </ImportGroup>
   <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
     <PropertyGroup>
       <ErrorText>This project references NuGet package(s) that are missing on this computer. Use NuGet Package Restore to download them.  For more information, see http://go.microsoft.com/fwlink/?LinkID=322105. The missing file is {0}.</ErrorText>
     </PropertyGroup>
-    <Error Condition="!Exists('..\..\..\..\..\Packages\WinPixEventRuntime.1.0.180612001\build\WinPixEventRuntime.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\..\..\..\..\Packages\WinPixEventRuntime.1.0.180612001\build\WinPixEventRuntime.targets'))" />
-    <Error Condition="!Exists('..\..\..\..\..\Packages\directxtk12_desktop_2015.2018.9.13.1\build\native\directxtk12_desktop_2015.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\..\..\..\..\Packages\directxtk12_desktop_2015.2018.9.13.1\build\native\directxtk12_desktop_2015.targets'))" />
+    <Error Condition="!Exists('..\..\..\..\..\Packages\WinPixEventRuntime.1.0.181027001\build\WinPixEventRuntime.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\..\..\..\..\Packages\WinPixEventRuntime.1.0.181027001\build\WinPixEventRuntime.targets'))" />
+    <Error Condition="!Exists('..\..\..\..\..\Packages\directxtk12_desktop_2015.2018.10.31.1\build\native\directxtk12_desktop_2015.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\..\..\..\..\Packages\directxtk12_desktop_2015.2018.10.31.1\build\native\directxtk12_desktop_2015.targets'))" />
   </Target>
 </Project>

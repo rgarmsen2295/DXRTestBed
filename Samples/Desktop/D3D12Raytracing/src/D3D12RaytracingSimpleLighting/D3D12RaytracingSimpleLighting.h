@@ -26,6 +26,7 @@ namespace GlobalRootSignatureParams {
         AccelerationStructureSlot,
 		//VertexBuffersSlot,
         SceneConstantSlot,
+		DiffuseTextureSlot,
         Count 
     };
 }
@@ -40,8 +41,8 @@ namespace TriangleLocalRootSignatureParams {
 
 namespace AABBLocalRootSignatureParams {
 	enum Value {
-		CubeConstantSlot = 0,
-		SphereConstantSlot,
+		SphereConstantSlot = 0,
+		//DiffuseTextureSlot,
 		Count
 	};
 }
@@ -131,6 +132,7 @@ private:
     D3DBuffer m_cubeVertexBuffer;
 	std::shared_ptr<Shape> m_sponza;
 	Sphere m_sphere;
+	D3D12_GPU_DESCRIPTOR_HANDLE m_sphereDiffuseTextureResourceGpuDescriptor;
 	UINT m_geometryDescriptorIndex;
 
 	// Cube indices.
@@ -267,6 +269,8 @@ private:
     void RecreateD3D();
     void DoRaytracing();
     void CreateConstantBuffers();
+	UINT UploadTexture(ID3D12Device *device, ResourceUploadBatch &resourceUploader, std::shared_ptr<Texture> &texture);
+	void LoadTextures();
     void CreateDeviceDependentResources();
     void CreateWindowSizeDependentResources();
     void ReleaseDeviceDependentResources();

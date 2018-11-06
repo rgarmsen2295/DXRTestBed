@@ -14,6 +14,9 @@
 #include "DirectXRaytracingHelper.h"
 #include "CompiledShaders\Raytracing.hlsl.h"
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
 using namespace std;
 using namespace DX;
 
@@ -192,6 +195,119 @@ void D3D12RaytracingSimpleLighting::CreateConstantBuffers()
     ThrowIfFailed(m_perFrameConstants->Map(0, nullptr, reinterpret_cast<void**>(&m_mappedConstantData)));
 }
 
+UINT D3D12RaytracingSimpleLighting::UploadTexture(ID3D12Device *device, ResourceUploadBatch &resourceUploader, std::shared_ptr<Texture> &texture)
+{
+	// Upload base texture via DirectX toolkit helper library.
+	resourceUploader.Upload(
+		texture->Resource.Get(),
+		0,
+		&texture->data,
+		1
+	);
+
+	// Create mip maps.
+	resourceUploader.Transition(
+		texture->Resource.Get(),
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+	resourceUploader.GenerateMips(texture->Resource.Get());
+	resourceUploader.Transition(
+		texture->Resource.Get(),
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+
+	D3D12_CPU_DESCRIPTOR_HANDLE srvDescriptorHandle;
+	UINT descriptorIndex = AllocateDescriptor(&srvDescriptorHandle);
+	texture->srvHeapIndex = descriptorIndex;
+
+	// Describe and create a SRV for the texture (and mip maps).
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	srvDesc.Format = texture->desc.Format;
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	srvDesc.Texture2D.MostDetailedMip = 0;
+	srvDesc.Texture2D.MipLevels = -1;
+	device->CreateShaderResourceView(texture->Resource.Get(), &srvDesc, srvDescriptorHandle);
+
+	return descriptorIndex;
+
+	// Also tried a manual upload process (not using the toolkit and no mipmaps).
+	{
+		//auto cmdList = m_deviceResources->GetCommandList();// Reset the command list for the acceleration structure construction.
+		//auto commandAllocator = m_deviceResources->GetCommandAllocator();
+
+		//cmdList->Reset(commandAllocator, nullptr);
+
+		//const UINT64 uploadBufferSize = GetRequiredIntermediateSize(texture->Resource.Get(), 0, 1);
+
+		//// Describe the resource
+		//D3D12_RESOURCE_DESC resourceDesc = {};
+		//resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+		//resourceDesc.Alignment = 0;
+		//resourceDesc.Width = uploadBufferSize;
+		//resourceDesc.Height = 1;
+		//resourceDesc.DepthOrArraySize = 1;
+		//resourceDesc.MipLevels = 1;
+		//resourceDesc.Format = DXGI_FORMAT_UNKNOWN;
+		//resourceDesc.SampleDesc.Count = 1;
+		//resourceDesc.SampleDesc.Quality = 0;
+		//resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+		//resourceDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+		//// Create the upload heap
+		//ThrowIfFailed(device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD), D3D12_HEAP_FLAG_NONE, &resourceDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(texture->UploadHeap.GetAddressOf())));
+
+		//// Schedule a copy from the upload heap to the Texture2D resource
+		//UpdateSubresources(cmdList, texture->Resource.Get(), texture->UploadHeap.Get(), 0, 0, 1, &texture->data);
+		////UpdateSubresources<1>(commandList, texture->Resource.Get(), texture->UploadHeap.Get(), 0, 0, 1, &subResourceData);
+
+		//// Transition the texture to a shader resource
+		//D3D12_RESOURCE_BARRIER barrier = {};
+		//barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+		//barrier.Transition.pResource = texture->Resource.Get();
+		//barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+		//barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+		//barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+		//barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+
+		//cmdList->ResourceBarrier(1, &barrier);
+
+		//// Kick off acceleration structure construction.
+		//m_deviceResources->ExecuteCommandList();
+
+		//// Wait for GPU to finish as the locally created temporary GPU resources will get released once we go out of scope.
+		//m_deviceResources->WaitForGpu();
+	}
+}
+
+void D3D12RaytracingSimpleLighting::LoadTextures()
+{
+	auto device = m_deviceResources->GetD3DDevice();
+	auto commandQueue = m_deviceResources->GetCommandQueue();
+
+	// Flip images loaded by stbi to match DX12 expected orientation.
+	stbi_set_flip_vertically_on_load(true);
+
+	// Load image file.
+	std::string sphereTexName = "background.png"; // Random image from sponza for now.
+	std::string mtlPath = "resources/";
+	auto sphereTexture = DX12Util::loadTexture(device, sphereTexName, mtlPath, stbi_load);
+
+	// Upload texture to GPU (and create things like mip-maps).
+	ResourceUploadBatch resourceUploader(device);
+	resourceUploader.Begin();
+
+	// Upload Sphere texture
+	UINT sphereDiffuseHeapIndex = UploadTexture(device, resourceUploader, sphereTexture);
+
+	// Use synchronously for now.
+	std::future<void> uploadFinish = resourceUploader.End(commandQueue);
+	uploadFinish.wait();
+
+	m_sphereDiffuseTextureResourceGpuDescriptor =
+		CD3DX12_GPU_DESCRIPTOR_HANDLE(m_descriptorHeap->GetGPUDescriptorHandleForHeapStart(), sphereDiffuseHeapIndex, m_descriptorSize);
+}
+
 // Create resources that depend on the device.
 void D3D12RaytracingSimpleLighting::CreateDeviceDependentResources()
 {
@@ -223,6 +339,9 @@ void D3D12RaytracingSimpleLighting::CreateDeviceDependentResources()
 
     // Create an output 2D texture to store the raytracing result to.
     CreateRaytracingOutputResource();
+
+	// Upload Textures.
+	LoadTextures();
 }
 
 void D3D12RaytracingSimpleLighting::SerializeAndCreateRaytracingRootSignature(D3D12_ROOT_SIGNATURE_DESC& desc, ComPtr<ID3D12RootSignature>* rootSig)
@@ -250,17 +369,17 @@ void D3D12RaytracingSimpleLighting::CreateRootSignatures()
     // Global Root Signature
     // This is a root signature that is shared across all raytracing shaders invoked during a DispatchRays() call.
     {
-        CD3DX12_DESCRIPTOR_RANGE ranges[1]; // Perfomance TIP: Order from most frequent to least frequent.
+        CD3DX12_DESCRIPTOR_RANGE ranges[2];
         ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
-		//ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 1);  // 2 static index and vertex buffers.
+		ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);  // Single global sphere texture.
 
         CD3DX12_ROOT_PARAMETER rootParameters[GlobalRootSignatureParams::Count];
         rootParameters[GlobalRootSignatureParams::OutputViewSlot].InitAsDescriptorTable(1, &ranges[0]);
         rootParameters[GlobalRootSignatureParams::AccelerationStructureSlot].InitAsShaderResourceView(0);
-		//rootParameters[GlobalRootSignatureParams::VertexBuffersSlot].InitAsDescriptorTable(1, &ranges[1]);
         rootParameters[GlobalRootSignatureParams::SceneConstantSlot].InitAsConstantBufferView(0);
+		rootParameters[GlobalRootSignatureParams::DiffuseTextureSlot].InitAsDescriptorTable(1, &ranges[1]);
 
-        CD3DX12_ROOT_SIGNATURE_DESC globalRootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
+		CD3DX12_ROOT_SIGNATURE_DESC globalRootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
         SerializeAndCreateRaytracingRootSignature(globalRootSignatureDesc, &m_raytracingGlobalRootSignature);
     }
 
@@ -272,8 +391,6 @@ void D3D12RaytracingSimpleLighting::CreateRootSignatures()
 
         CD3DX12_ROOT_PARAMETER rootParameters[TriangleLocalRootSignatureParams::Count];
         rootParameters[TriangleLocalRootSignatureParams::CubeConstantSlot].InitAsConstants(SizeOfInUint32(m_cubeCB), 1);
-		//rootParameters[TriangleLocalRootSignatureParams::IndexBuffer].InitAsShaderResourceView(1);
-		//rootParameters[TriangleLocalRootSignatureParams::VertexBuffer].InitAsShaderResourceView(2);
 		rootParameters[TriangleLocalRootSignatureParams::VertexBuffers].InitAsDescriptorTable(1, &ranges[0]);
 
         CD3DX12_ROOT_SIGNATURE_DESC localRootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
@@ -281,11 +398,14 @@ void D3D12RaytracingSimpleLighting::CreateRootSignatures()
         SerializeAndCreateRaytracingRootSignature(localRootSignatureDesc, &m_raytracingLocalRootSignature[0]);
     }
 
-	// AABB geometry
+	// AABB geometry (sphere only right now)
 	{
+		//CD3DX12_DESCRIPTOR_RANGE ranges[1];
+		//ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);  // Sphere texture slot
+
 		CD3DX12_ROOT_PARAMETER rootParameters[AABBLocalRootSignatureParams::Count];
-		rootParameters[AABBLocalRootSignatureParams::CubeConstantSlot].InitAsConstants(SizeOfInUint32(m_cubeCB), 1);
 		rootParameters[AABBLocalRootSignatureParams::SphereConstantSlot].InitAsConstants(SizeOfInUint32(Sphere), 2);
+		//rootParameters[AABBLocalRootSignatureParams::DiffuseTextureSlot].InitAsDescriptorTable(1, &ranges[0]);
 
 		CD3DX12_ROOT_SIGNATURE_DESC localRootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
 		localRootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE;
@@ -466,7 +586,7 @@ void D3D12RaytracingSimpleLighting::BuildProceduralGeometryAABBs()
 
 	// Set up Sphere geometry info.
 	{
-		m_sphere.info = XMFLOAT4(10.0, 0.0, 10.0, 5.0);
+		m_sphere.info = XMFLOAT4(0.1, -0.25, 0.0, 0.1);
 	}
 
 	// Set up Sphere AABBs.
@@ -497,6 +617,8 @@ void D3D12RaytracingSimpleLighting::BuildGeometry()
 	auto commandQueue = m_deviceResources->GetCommandQueue();
 	auto commandAllocator = m_deviceResources->GetCommandAllocator();
 
+// SHOW_CUBE is a hacky way to switch between loading the full sponza scene and the original cube model for quick testing (completely seperately compiled code to ensure
+// issues are or are not caused by code I added for Sponza).
 //#define SHOW_CUBE
 #ifndef SHOW_CUBE
 	m_sponza = std::make_shared<Shape>();
@@ -875,12 +997,13 @@ void D3D12RaytracingSimpleLighting::CreateDescriptorHeap()
     // numGeometry * 2 - vertex and index buffer SRVs
     // 1 - raytracing output texture SRV
     // 3 - 2 bottom and 1 top level acceleration structure fallback wrapped pointer UAVs
+	// 1 - texture for sphere
 #ifdef SHOW_CUBE
 	UINT numGeometry = 1;
 #else
 	UINT numGeometry = m_sponza->m_obj_count;
 #endif
-	descriptorHeapDesc.NumDescriptors = numGeometry * 2 + 4;
+	descriptorHeapDesc.NumDescriptors = numGeometry * 2 + 1 + 3 + 1;
     descriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     descriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     descriptorHeapDesc.NodeMask = 0;
@@ -902,9 +1025,8 @@ void D3D12RaytracingSimpleLighting::CreateDescriptorHeap()
 
 	m_geometryDescriptorIndex = descriptorIndexIB;
 #else
-	// Reset the command list for the acceleration structure construction.
+	// Build resources for rendering Sponza geometry.
 	commandList->Reset(commandAllocator, nullptr);
-	//m_deviceResources->ResetCommandAllocatorAndCommandlist();
 
 	m_sponza->init(device, commandList);
 
@@ -994,7 +1116,6 @@ void D3D12RaytracingSimpleLighting::BuildShaderTables()
         missShaderIdentifier = stateObjectProperties->GetShaderIdentifier(c_missShaderName);
         hitGroupShaderIdentifier = stateObjectProperties->GetShaderIdentifier(c_hitGroupName);
 		aabbHitGroupShaderIdentifier = stateObjectProperties->GetShaderIdentifier(c_aabbHitGroupName);
-		//aabbIntersectionShaderIdentifier = stateObjectProperties->GetShaderIdentifier(c_aabbIntersectionShaderName);
     };
 
     // Get shader identifiers.
@@ -1036,14 +1157,12 @@ void D3D12RaytracingSimpleLighting::BuildShaderTables()
     {
 		struct TriangleRootArguments {
 			CubeConstantBuffer cb;
-			//D3D12_GPU_DESCRIPTOR_HANDLE indexBufferGPUHandle;
 			D3D12_GPU_DESCRIPTOR_HANDLE vertexBufferGPUHandle;
 		} triangleRootArguments;
 
 		struct AABBRootArguments {
-			CubeConstantBuffer cb;
-			//D3D12_GPU_DESCRIPTOR_HANDLE indexBufferGPUHandle;
 			Sphere sphereConstant;
+			//D3D12_GPU_DESCRIPTOR_HANDLE diffuseTexture;
 		} aabbRootArguments;
 
 #ifdef SHOW_CUBE
@@ -1053,7 +1172,7 @@ void D3D12RaytracingSimpleLighting::BuildShaderTables()
 #endif
 		UINT numAABBShaderRecords = 1; // Only 1 sphere right now.
 
-		UINT numShaderRecords = numTriangleShaderRecords + numAABBShaderRecords; // + 1 for sphere
+		UINT numShaderRecords = numTriangleShaderRecords + numAABBShaderRecords;
 
 		UINT shaderRecordSize = shaderIdentifierSize + max(sizeof(triangleRootArguments), sizeof(aabbRootArguments));
 		ShaderTable hitGroupShaderTable(device, numShaderRecords, shaderRecordSize, L"HitGroupShaderTable");
@@ -1068,8 +1187,6 @@ void D3D12RaytracingSimpleLighting::BuildShaderTables()
 			for (UINT i = 0; i < numTriangleShaderRecords; i++)
 			{
 #ifdef SHOW_CUBE
-				//rootArguments.indexBufferGPUHandle = m_cubeIndexBuffer.gpuDescriptorHandle;
-				//rootArguments.vertexBufferGPUHandle = m_cubeVertexBuffer.gpuDescriptorHandle;
 				triangleRootArguments.vertexBufferGPUHandle = m_cubeIndexBuffer.gpuDescriptorHandle;
 #else
 				triangleRootArguments.vertexBufferGPUHandle = m_sponza->m_indexBuffer[i].gpuDescriptorHandle;
@@ -1080,29 +1197,13 @@ void D3D12RaytracingSimpleLighting::BuildShaderTables()
 
 		// AABB geometry hit groups.
 		{
-			//LocalRootSignature::AABB::RootArguments rootArgs;
-			//UINT instanceIndex = 0;
-
 			// Create a shader record for each primitive.
 			for (UINT i = 0; i < numAABBShaderRecords; i++)
 			{
-				// Primitives for each intersection shader.
-				//for (UINT primitiveIndex = 0; primitiveIndex < numPrimitiveTypes; primitiveIndex++, instanceIndex++)
-				//{
-				//	rootArgs.materialCb = m_aabbMaterialCB[instanceIndex];
-				//	rootArgs.aabbCB.instanceIndex = instanceIndex;
-				//	rootArgs.aabbCB.primitiveType = primitiveIndex;
-				aabbRootArguments.cb = m_cubeCB;
 				aabbRootArguments.sphereConstant = m_sphere;
+				//aabbRootArguments.diffuseTexture = m_sphereDiffuseTextureResourceGpuDescriptor;
 				
 				hitGroupShaderTable.push_back(ShaderRecord(aabbHitGroupShaderIdentifier, shaderIdentifierSize, &aabbRootArguments, sizeof(aabbRootArguments)));
-				// Ray types.
-				/*for (UINT r = 0; r < RayType::Count; r++)
-				{
-					auto& hitGroupShaderID = hitGroupShaderIDs_AABBGeometry[iShader][r];
-					hitGroupShaderTable.push_back(ShaderRecord(hitGroupShaderID, shaderIDSize, &rootArgs, sizeof(rootArgs)));
-				}*/
-				//}
 			}
 		}
 
@@ -1249,6 +1350,7 @@ void D3D12RaytracingSimpleLighting::DoRaytracing()
 //		commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::VertexBuffersSlot, m_sponza->m_indexBuffer[0].gpuDescriptorHandle);
 //#endif
 		commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputViewSlot, m_raytracingOutputResourceUAVGpuDescriptor);
+		commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::DiffuseTextureSlot, m_sphereDiffuseTextureResourceGpuDescriptor);
     };
 
     commandList->SetComputeRootSignature(m_raytracingGlobalRootSignature.Get());

@@ -24,18 +24,18 @@ public:
 		ComPtr<ID3D12Resource>& uploadBuffer);
 
 	static std::shared_ptr<Texture> loadTexture(
-		ComPtr<ID3D12Device> device,
+		ID3D12Device *device,
 		std::string & textureName,
 		std::string & mtlPath,
 		unsigned char *(loadimage)(char const *, int *, int *, int *, int));
 	
-	static void initTextures(
-		ComPtr<ID3D12Device> device,
+	/*static void initTexture(
+		ID3D12Device *device,
 		ResourceUploadBatch & resourceUploader,
 		ComPtr<ID3D12DescriptorHeap> srvHeap,
 		UINT srvDescriptorSize,
 		std::shared_ptr<Texture> & texture,
-		UINT nextSrvHeapIndex);
+		UINT nextSrvHeapIndex);*/
 
 private:
 	static const UINT FrameCount = 2;
