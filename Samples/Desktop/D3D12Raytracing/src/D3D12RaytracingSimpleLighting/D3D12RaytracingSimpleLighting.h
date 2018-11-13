@@ -26,7 +26,7 @@ namespace GlobalRootSignatureParams {
         AccelerationStructureSlot,
 		//VertexBuffersSlot,
         SceneConstantSlot,
-		DiffuseTextureSlot,
+		//DiffuseTextureSlot,
         Count 
     };
 }
@@ -42,7 +42,7 @@ namespace TriangleLocalRootSignatureParams {
 namespace AABBLocalRootSignatureParams {
 	enum Value {
 		SphereConstantSlot = 0,
-		//DiffuseTextureSlot,
+		DiffuseTextureSlot,
 		Count
 	};
 }
@@ -132,6 +132,7 @@ private:
     D3DBuffer m_cubeVertexBuffer;
 	std::shared_ptr<Shape> m_sponza;
 	Sphere m_sphere;
+	std::shared_ptr<Texture> m_sphereTexture;
 	D3D12_GPU_DESCRIPTOR_HANDLE m_sphereDiffuseTextureResourceGpuDescriptor;
 	UINT m_geometryDescriptorIndex;
 

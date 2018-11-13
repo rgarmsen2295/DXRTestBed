@@ -289,16 +289,16 @@ void D3D12RaytracingSimpleLighting::LoadTextures()
 	stbi_set_flip_vertically_on_load(true);
 
 	// Load image file.
-	std::string sphereTexName = "background.png"; // Random image from sponza for now.
+	std::string sphereTexName = "earth_big.jpg"; // Random image from sponza for now.
 	std::string mtlPath = "resources/";
-	auto sphereTexture = DX12Util::loadTexture(device, sphereTexName, mtlPath, stbi_load);
+	m_sphereTexture = DX12Util::loadTexture(device, sphereTexName, mtlPath, stbi_load);
 
 	// Upload texture to GPU (and create things like mip-maps).
 	ResourceUploadBatch resourceUploader(device);
 	resourceUploader.Begin();
 
 	// Upload Sphere texture
-	UINT sphereDiffuseHeapIndex = UploadTexture(device, resourceUploader, sphereTexture);
+	UINT sphereDiffuseHeapIndex = UploadTexture(device, resourceUploader, m_sphereTexture);
 
 	// Use synchronously for now.
 	std::future<void> uploadFinish = resourceUploader.End(commandQueue);
@@ -334,14 +334,14 @@ void D3D12RaytracingSimpleLighting::CreateDeviceDependentResources()
     // Create constant buffers for the geometry and the scene.
     CreateConstantBuffers();
 
+	// Upload Textures.
+	LoadTextures();
+
     // Build shader tables, which define shaders and their local root arguments.
     BuildShaderTables();
 
     // Create an output 2D texture to store the raytracing result to.
     CreateRaytracingOutputResource();
-
-	// Upload Textures.
-	LoadTextures();
 }
 
 void D3D12RaytracingSimpleLighting::SerializeAndCreateRaytracingRootSignature(D3D12_ROOT_SIGNATURE_DESC& desc, ComPtr<ID3D12RootSignature>* rootSig)
@@ -371,13 +371,13 @@ void D3D12RaytracingSimpleLighting::CreateRootSignatures()
     {
         CD3DX12_DESCRIPTOR_RANGE ranges[2];
         ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
-		ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);  // Single global sphere texture.
+		//ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);  // Single global sphere texture.
 
         CD3DX12_ROOT_PARAMETER rootParameters[GlobalRootSignatureParams::Count];
         rootParameters[GlobalRootSignatureParams::OutputViewSlot].InitAsDescriptorTable(1, &ranges[0]);
         rootParameters[GlobalRootSignatureParams::AccelerationStructureSlot].InitAsShaderResourceView(0);
         rootParameters[GlobalRootSignatureParams::SceneConstantSlot].InitAsConstantBufferView(0);
-		rootParameters[GlobalRootSignatureParams::DiffuseTextureSlot].InitAsDescriptorTable(1, &ranges[1]);
+		//rootParameters[GlobalRootSignatureParams::DiffuseTextureSlot].InitAsDescriptorTable(1, &ranges[1]);
 
 		CD3DX12_ROOT_SIGNATURE_DESC globalRootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
         SerializeAndCreateRaytracingRootSignature(globalRootSignatureDesc, &m_raytracingGlobalRootSignature);
@@ -400,12 +400,12 @@ void D3D12RaytracingSimpleLighting::CreateRootSignatures()
 
 	// AABB geometry (sphere only right now)
 	{
-		//CD3DX12_DESCRIPTOR_RANGE ranges[1];
-		//ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);  // Sphere texture slot
+		CD3DX12_DESCRIPTOR_RANGE ranges[1];
+		ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);  // Sphere texture slot
 
 		CD3DX12_ROOT_PARAMETER rootParameters[AABBLocalRootSignatureParams::Count];
 		rootParameters[AABBLocalRootSignatureParams::SphereConstantSlot].InitAsConstants(SizeOfInUint32(Sphere), 2);
-		//rootParameters[AABBLocalRootSignatureParams::DiffuseTextureSlot].InitAsDescriptorTable(1, &ranges[0]);
+		rootParameters[AABBLocalRootSignatureParams::DiffuseTextureSlot].InitAsDescriptorTable(1, &ranges[0]);
 
 		CD3DX12_ROOT_SIGNATURE_DESC localRootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
 		localRootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE;
@@ -1162,7 +1162,7 @@ void D3D12RaytracingSimpleLighting::BuildShaderTables()
 
 		struct AABBRootArguments {
 			Sphere sphereConstant;
-			//D3D12_GPU_DESCRIPTOR_HANDLE diffuseTexture;
+			D3D12_GPU_DESCRIPTOR_HANDLE diffuseTexture;
 		} aabbRootArguments;
 
 #ifdef SHOW_CUBE
@@ -1201,7 +1201,7 @@ void D3D12RaytracingSimpleLighting::BuildShaderTables()
 			for (UINT i = 0; i < numAABBShaderRecords; i++)
 			{
 				aabbRootArguments.sphereConstant = m_sphere;
-				//aabbRootArguments.diffuseTexture = m_sphereDiffuseTextureResourceGpuDescriptor;
+				aabbRootArguments.diffuseTexture = m_sphereDiffuseTextureResourceGpuDescriptor;
 				
 				hitGroupShaderTable.push_back(ShaderRecord(aabbHitGroupShaderIdentifier, shaderIdentifierSize, &aabbRootArguments, sizeof(aabbRootArguments)));
 			}
@@ -1350,7 +1350,7 @@ void D3D12RaytracingSimpleLighting::DoRaytracing()
 //		commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::VertexBuffersSlot, m_sponza->m_indexBuffer[0].gpuDescriptorHandle);
 //#endif
 		commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputViewSlot, m_raytracingOutputResourceUAVGpuDescriptor);
-		commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::DiffuseTextureSlot, m_sphereDiffuseTextureResourceGpuDescriptor);
+		//commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::DiffuseTextureSlot, m_sphereDiffuseTextureResourceGpuDescriptor);
     };
 
     commandList->SetComputeRootSignature(m_raytracingGlobalRootSignature.Get());
