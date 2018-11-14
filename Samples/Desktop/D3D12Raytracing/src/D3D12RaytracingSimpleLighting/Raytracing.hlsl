@@ -100,13 +100,20 @@ void MyRaygenShader()
     ray.TMin = 0.001;
     ray.TMax = 10000.0;
     RayPayload payload = { float4(0, 0, 0, 0) };
-    TraceRay(Scene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, ~0, 0, 1, 0, ray, payload);
+    TraceRay(Scene,
+		RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
+		TraceRayParameters::InstanceMask,
+        TraceRayParameters::HitGroup::Offset[RayType::Radiance],
+        TraceRayParameters::HitGroup::GeometryStride,
+        TraceRayParameters::MissShader::Offset[RayType::Radiance],
+        ray,
+        payload);
     
     RenderTarget[DispatchRaysIndex().xy] = payload.color;
 }
 
 [shader("closesthit")]
-void MyClosestHitShader(inout RayPayload payload, in TriangleAttributes attr)
+void TriangleClosestHitShader(inout RayPayload payload, in TriangleAttributes attr)
 {
     float3 hitPosition = HitWorldPosition();
 
@@ -333,6 +340,12 @@ void MyMissShader(inout RayPayload payload)
 {
     float4 background = float4(0.0f, 0.2f, 0.4f, 1.0f);
     payload.color = background;
+}
+
+[shader("miss")]
+void MyMissShader_ShadowRay(inout ShadowRayPayload rayPayload)
+{
+    rayPayload.hit = false;
 }
 
 #endif // RAYTRACING_HLSL

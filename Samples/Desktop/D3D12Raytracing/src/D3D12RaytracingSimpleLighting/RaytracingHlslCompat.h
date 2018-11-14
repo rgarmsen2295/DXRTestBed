@@ -32,6 +32,11 @@ struct RayPayload
 	//UINT   recursionDepth;
 };
 
+struct ShadowRayPayload
+{
+	bool hit;
+};
+
 struct SceneConstantBuffer
 {
     XMMATRIX projectionToWorld;
@@ -59,6 +64,35 @@ struct Sphere
 {
 	XMFLOAT4 info; // xyz - center position, w - radius
 };
+
+// Ray types traced in this sample.
+namespace RayType {
+	enum Enum {
+		Radiance = 0,   // ~ Primary, reflected camera/view rays calculating color for each hit.
+		Shadow,         // ~ Shadow/visibility rays, only testing for occlusion
+		Count
+	};
+}
+
+namespace TraceRayParameters
+{
+	static const UINT InstanceMask = ~0;   // Everything is visible.
+	namespace HitGroup {
+		static const UINT Offset[RayType::Count] =
+		{
+			0, // Radiance ray
+			1  // Shadow ray
+		};
+		static const UINT GeometryStride = RayType::Count;
+	}
+	namespace MissShader {
+		static const UINT Offset[RayType::Count] =
+		{
+			0, // Radiance ray
+			1  // Shadow ray
+		};
+	}
+}
 
 //typedef UINT SphereIndex;
 

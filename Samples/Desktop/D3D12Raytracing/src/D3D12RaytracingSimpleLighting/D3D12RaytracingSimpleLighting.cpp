@@ -20,13 +20,22 @@
 using namespace std;
 using namespace DX;
 
-const wchar_t* D3D12RaytracingSimpleLighting::c_hitGroupName = L"MyHitGroup";
-const wchar_t* D3D12RaytracingSimpleLighting::c_aabbHitGroupName = L"AABBHitGroup";
+const wchar_t* D3D12RaytracingSimpleLighting::c_hitGroupNames_TriangleGeometry[] =
+{
+	L"MyHitGroup_Triangle", L"MyHitGroup_Triangle_ShadowRay"
+};
+const wchar_t* D3D12RaytracingSimpleLighting::c_hitGroupNames_AABBGeometry[] =
+{
+	L"MyHitGroup_AABB", L"MyHitGroup_AABB_ShadowRay"
+};
 const wchar_t* D3D12RaytracingSimpleLighting::c_raygenShaderName = L"MyRaygenShader";
-const wchar_t* D3D12RaytracingSimpleLighting::c_closestHitShaderName = L"MyClosestHitShader";
+const wchar_t* D3D12RaytracingSimpleLighting::c_triangleClosestHitShaderName = L"TriangleClosestHitShader";
 const wchar_t* D3D12RaytracingSimpleLighting::c_aabbClosestHitShaderName = L"AABBClosestHitShader";
 const wchar_t* D3D12RaytracingSimpleLighting::c_sphereIntersectionShaderName = L"SphereIntersectionShader";
-const wchar_t* D3D12RaytracingSimpleLighting::c_missShaderName = L"MyMissShader";
+const wchar_t* D3D12RaytracingSimpleLighting::c_missShaderNames[] =
+{
+	L"MyMissShader", L"MyMissShader_ShadowRay"
+};
 
 D3D12RaytracingSimpleLighting::D3D12RaytracingSimpleLighting(UINT width, UINT height, std::wstring name) :
     DXSample(width, height, name),
@@ -448,7 +457,7 @@ void D3D12RaytracingSimpleLighting::CreateLocalRootSignatureSubobjects(CD3D12_ST
 		{
 			auto rootSignatureAssociation = raytracingPipeline->CreateSubobject<CD3D12_SUBOBJECT_TO_EXPORTS_ASSOCIATION_SUBOBJECT>();
 			rootSignatureAssociation->SetSubobjectToAssociate(*localRootSignature);
-			rootSignatureAssociation->AddExport(c_hitGroupName);
+			rootSignatureAssociation->AddExports(c_hitGroupNames_TriangleGeometry);
 		}
 	}
 
@@ -460,7 +469,7 @@ void D3D12RaytracingSimpleLighting::CreateLocalRootSignatureSubobjects(CD3D12_ST
 		{
 			auto rootSignatureAssociation = raytracingPipeline->CreateSubobject<CD3D12_SUBOBJECT_TO_EXPORTS_ASSOCIATION_SUBOBJECT>();
 			rootSignatureAssociation->SetSubobjectToAssociate(*localRootSignature);
-			rootSignatureAssociation->AddExport(c_aabbHitGroupName);
+			rootSignatureAssociation->AddExports(c_hitGroupNames_AABBGeometry);
 		}
 	}
 }
@@ -501,27 +510,40 @@ void D3D12RaytracingSimpleLighting::CreateRaytracingPipelineStateObject()
         lib->DefineExport(c_missShaderName);*/
     }
     
-    // Triangle hit group
-    // A hit group specifies closest hit, any hit and intersection shaders to be executed when a ray intersects the geometry's triangle/AABB.
-    // In this sample, we only use triangle geometry with a closest hit shader, so others are not set.
-    auto triHitGroup = raytracingPipeline.CreateSubobject<CD3D12_HIT_GROUP_SUBOBJECT>();
-	triHitGroup->SetClosestHitShaderImport(c_closestHitShaderName);
-	triHitGroup->SetHitGroupExport(c_hitGroupName);
-	triHitGroup->SetHitGroupType(D3D12_HIT_GROUP_TYPE_TRIANGLES);
+	// Triangle geometry hit groups
+	{
+		for (UINT rayType = 0; rayType < RayType::Count; rayType++)
+		{
+			auto hitGroup = raytracingPipeline.CreateSubobject<CD3D12_HIT_GROUP_SUBOBJECT>();
+			if (rayType == RayType::Radiance)
+			{
+				hitGroup->SetClosestHitShaderImport(c_triangleClosestHitShaderName);
+			}
+			hitGroup->SetHitGroupExport(c_hitGroupNames_TriangleGeometry[rayType]);
+			hitGroup->SetHitGroupType(D3D12_HIT_GROUP_TYPE_TRIANGLES);
+		}
+	}
 
-	// AABB hit group
-	// A hit group specifies closest hit, any hit and intersection shaders to be executed when a ray intersects the geometry's triangle/AABB.
-	// In this sample, we only use triangle geometry with a closest hit shader, so others are not set.
-	auto aabbHitGroup = raytracingPipeline.CreateSubobject<CD3D12_HIT_GROUP_SUBOBJECT>();
-	aabbHitGroup->SetIntersectionShaderImport(c_sphereIntersectionShaderName);
-	aabbHitGroup->SetClosestHitShaderImport(c_aabbClosestHitShaderName);
-	aabbHitGroup->SetHitGroupExport(c_aabbHitGroupName);
-	aabbHitGroup->SetHitGroupType(D3D12_HIT_GROUP_TYPE_PROCEDURAL_PRIMITIVE);
+	// AABB geometry hit groups
+	{
+		// Create hit groups for each intersection shader.
+		for (UINT rayType = 0; rayType < RayType::Count; rayType++)
+		{
+			auto hitGroup = raytracingPipeline.CreateSubobject<CD3D12_HIT_GROUP_SUBOBJECT>();
+			hitGroup->SetIntersectionShaderImport(c_sphereIntersectionShaderName);
+			if (rayType == RayType::Radiance)
+			{
+				hitGroup->SetClosestHitShaderImport(c_aabbClosestHitShaderName);
+			}
+			hitGroup->SetHitGroupExport(c_hitGroupNames_AABBGeometry[rayType]);
+			hitGroup->SetHitGroupType(D3D12_HIT_GROUP_TYPE_PROCEDURAL_PRIMITIVE);
+		}
+	}
     
     // Shader config
     // Defines the maximum sizes in bytes for the ray payload and attribute structure.
     auto shaderConfig = raytracingPipeline.CreateSubobject<CD3D12_RAYTRACING_SHADER_CONFIG_SUBOBJECT>();
-    UINT payloadSize = sizeof(RayPayload);    // float4 pixelColor
+	UINT payloadSize = max(sizeof(RayPayload), sizeof(ShadowRayPayload));
     UINT attributeSize = sizeof(struct ProceduralPrimitiveAttributes);  // float2 barycentrics OR float3 normal (need largest possible)
     shaderConfig->Config(payloadSize, attributeSize);
 
@@ -855,7 +877,7 @@ void D3D12RaytracingSimpleLighting::BuildBotomLevelASInstanceDescs(BLASPtrType *
 		instanceDesc.InstanceMask = 1;
 
 		// Set hit group offset to beyond the shader records for the triangle AABB.
-		instanceDesc.InstanceContributionToHitGroupIndex = BottomLevelASType::AABB * m_sponza->m_obj_count;// * RayType::Count; change if shadow rays, etc introduced.
+		instanceDesc.InstanceContributionToHitGroupIndex = BottomLevelASType::AABB * m_sponza->m_obj_count * RayType::Count; //change if shadow rays, etc introduced.
 		instanceDesc.AccelerationStructure = bottomLevelASaddresses[BottomLevelASType::AABB];
 		instanceDesc.Transform[0][0] = instanceDesc.Transform[1][1] = instanceDesc.Transform[2][2] = 1;
 
@@ -1106,16 +1128,32 @@ void D3D12RaytracingSimpleLighting::BuildShaderTables()
     auto device = m_deviceResources->GetD3DDevice();
 
     void* rayGenShaderIdentifier;
-    void* missShaderIdentifier;
-    void* hitGroupShaderIdentifier;
-	void* aabbHitGroupShaderIdentifier;
+	void* missShaderIDs[RayType::Count];
+	void* hitGroupShaderIDs_TriangleGeometry[RayType::Count];
+	void* hitGroupShaderIDs_AABBGeometry[RayType::Count];
 
     auto GetShaderIdentifiers = [&](auto* stateObjectProperties)
     {
         rayGenShaderIdentifier = stateObjectProperties->GetShaderIdentifier(c_raygenShaderName);
-        missShaderIdentifier = stateObjectProperties->GetShaderIdentifier(c_missShaderName);
+        /*missShaderIdentifier = stateObjectProperties->GetShaderIdentifier(c_missShaderName);
         hitGroupShaderIdentifier = stateObjectProperties->GetShaderIdentifier(c_hitGroupName);
-		aabbHitGroupShaderIdentifier = stateObjectProperties->GetShaderIdentifier(c_aabbHitGroupName);
+		aabbHitGroupShaderIdentifier = stateObjectProperties->GetShaderIdentifier(c_aabbHitGroupName);*/
+
+		for (UINT i = 0; i < RayType::Count; i++)
+		{
+			missShaderIDs[i] = stateObjectProperties->GetShaderIdentifier(c_missShaderNames[i]);
+			//shaderIdToStringMap[missShaderIDs[i]] = c_missShaderNames[i];
+		}
+		for (UINT i = 0; i < RayType::Count; i++)
+		{
+			hitGroupShaderIDs_TriangleGeometry[i] = stateObjectProperties->GetShaderIdentifier(c_hitGroupNames_TriangleGeometry[i]);
+			//shaderIdToStringMap[hitGroupShaderIDs_TriangleGeometry[i]] = c_hitGroupNames_TriangleGeometry[i];
+		}
+		for (UINT i = 0; i < RayType::Count; i++)
+		{
+			hitGroupShaderIDs_AABBGeometry[i] = stateObjectProperties->GetShaderIdentifier(c_hitGroupNames_AABBGeometry[i]);
+			//shaderIdToStringMap[hitGroupShaderIDs_AABBGeometry[r][c]] = c_hitGroupNames_AABBGeometry[r][c];
+		}
     };
 
     // Get shader identifiers.
@@ -1145,12 +1183,17 @@ void D3D12RaytracingSimpleLighting::BuildShaderTables()
 
     // Miss shader table.
     {
-        UINT numShaderRecords = 1;
+		UINT numShaderRecords = RayType::Count;
         UINT shaderRecordSize = shaderIdentifierSize;
 
-        ShaderTable missShaderTable(device, numShaderRecords, shaderRecordSize, L"MissShaderTable");
-        missShaderTable.push_back(ShaderRecord(missShaderIdentifier, shaderIdentifierSize));
-        m_missShaderTable = missShaderTable.GetResource();
+		ShaderTable missShaderTable(device, numShaderRecords, shaderRecordSize, L"MissShaderTable");
+		for (UINT i = 0; i < RayType::Count; i++)
+		{
+			missShaderTable.push_back(ShaderRecord(missShaderIDs[i], shaderRecordSize, nullptr, 0));
+		}
+		//missShaderTable.DebugPrint(shaderIdToStringMap);
+		m_missShaderTableStrideInBytes = missShaderTable.GetShaderRecordSize();
+		m_missShaderTable = missShaderTable.GetResource();
     }
 
 	// Hit group shader table.
@@ -1172,7 +1215,7 @@ void D3D12RaytracingSimpleLighting::BuildShaderTables()
 #endif
 		UINT numAABBShaderRecords = 1; // Only 1 sphere right now.
 
-		UINT numShaderRecords = numTriangleShaderRecords + numAABBShaderRecords;
+		UINT numShaderRecords = (numTriangleShaderRecords + numAABBShaderRecords) * RayType::Count;
 
 		UINT shaderRecordSize = shaderIdentifierSize + max(sizeof(triangleRootArguments), sizeof(aabbRootArguments));
 		ShaderTable hitGroupShaderTable(device, numShaderRecords, shaderRecordSize, L"HitGroupShaderTable");
@@ -1191,7 +1234,11 @@ void D3D12RaytracingSimpleLighting::BuildShaderTables()
 #else
 				triangleRootArguments.vertexBufferGPUHandle = m_sponza->m_indexBuffer[i].gpuDescriptorHandle;
 #endif
-				hitGroupShaderTable.push_back(ShaderRecord(hitGroupShaderIdentifier, shaderIdentifierSize, &triangleRootArguments, sizeof(triangleRootArguments)));
+				//hitGroupShaderTable.push_back(ShaderRecord(hitGroupShaderIdentifier, shaderIdentifierSize, &triangleRootArguments, sizeof(triangleRootArguments)));
+				for (auto& hitGroupShaderID : hitGroupShaderIDs_TriangleGeometry)
+				{
+					hitGroupShaderTable.push_back(ShaderRecord(hitGroupShaderID, shaderIdentifierSize, &triangleRootArguments, sizeof(triangleRootArguments)));
+				}
 			}
 		}
 
@@ -1202,8 +1249,12 @@ void D3D12RaytracingSimpleLighting::BuildShaderTables()
 			{
 				aabbRootArguments.sphereConstant = m_sphere;
 				aabbRootArguments.diffuseTexture = m_sphereDiffuseTextureResourceGpuDescriptor;
-				
-				hitGroupShaderTable.push_back(ShaderRecord(aabbHitGroupShaderIdentifier, shaderIdentifierSize, &aabbRootArguments, sizeof(aabbRootArguments)));
+
+				for (auto& hitGroupShaderID : hitGroupShaderIDs_AABBGeometry)
+				{
+					hitGroupShaderTable.push_back(ShaderRecord(hitGroupShaderID, shaderIdentifierSize, &aabbRootArguments, sizeof(aabbRootArguments)));
+				}
+				//hitGroupShaderTable.push_back(ShaderRecord(aabbHitGroupShaderIdentifier, shaderIdentifierSize, &aabbRootArguments, sizeof(aabbRootArguments)));
 			}
 		}
 
@@ -1329,7 +1380,7 @@ void D3D12RaytracingSimpleLighting::DoRaytracing()
         dispatchDesc->HitGroupTable.StrideInBytes = m_hitGroupShaderTableStrideInBytes;
         dispatchDesc->MissShaderTable.StartAddress = m_missShaderTable->GetGPUVirtualAddress();
         dispatchDesc->MissShaderTable.SizeInBytes = m_missShaderTable->GetDesc().Width;
-        dispatchDesc->MissShaderTable.StrideInBytes = dispatchDesc->MissShaderTable.SizeInBytes;
+        dispatchDesc->MissShaderTable.StrideInBytes = m_missShaderTableStrideInBytes;
         dispatchDesc->RayGenerationShaderRecord.StartAddress = m_rayGenShaderTable->GetGPUVirtualAddress();
         dispatchDesc->RayGenerationShaderRecord.SizeInBytes = m_rayGenShaderTable->GetDesc().Width;
         dispatchDesc->Width = m_width;
