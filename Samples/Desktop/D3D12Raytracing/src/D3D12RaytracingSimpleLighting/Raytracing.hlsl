@@ -177,7 +177,6 @@ void TriangleClosestHitShader(inout RayPayload payload, in TriangleAttributes at
     // This is redundant and done for illustration purposes 
     // as all the per-vertex normals are the same and match triangle's normal in this sample. 
     float3 triangleNormal = HitAttribute(vertexNormals, attr);
-        
 
     // Shadow component.
     // Trace a shadow ray.
@@ -240,7 +239,14 @@ void AABBClosestHitShader(inout RayPayload payload, in ProceduralPrimitiveAttrib
 
     float4 textureColor = GetSphereTextureColor(hitPosition, attr.normal);
 
-    payload.color = textureColor /** CalculateDiffuseLighting(HitWorldPosition(), attr.normal)*/;
+    // Shadow component.
+    // Trace a shadow ray.
+    Ray shadowRay = { hitPosition, normalize(g_sceneCB.lightPosition.xyz - hitPosition) };
+    float shadowRayHit = TraceShadowRayAndReportIfHit(shadowRay) ? 0.0 : 1.0;
+
+    payload.color = textureColor * 0.2 + textureColor * CalculateDiffuseLighting(HitWorldPosition(), attr.normal) * shadowRayHit;
+    payload.color.a = 1.0;
+
 }
 
 void swap(inout float a, inout float b)
