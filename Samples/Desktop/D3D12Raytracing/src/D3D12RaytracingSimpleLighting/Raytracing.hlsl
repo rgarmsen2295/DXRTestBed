@@ -107,9 +107,47 @@ void MyRaygenShader()
         TraceRayParameters::HitGroup::GeometryStride,
         TraceRayParameters::MissShader::Offset[RayType::Radiance],
         ray,
-        payload);
+        payload
+    );
     
     RenderTarget[DispatchRaysIndex().xy] = payload.color;
+    }
+
+// Trace a shadow ray and return true if it hits any geometry.
+bool TraceShadowRayAndReportIfHit(in Ray ray)
+{
+    //if (currentRayRecursionDepth >= MAX_RAY_RECURSION_DEPTH)
+    //{
+    //    return false;
+    //}
+
+    // Set the ray's extents.
+    RayDesc rayDesc;
+    rayDesc.Origin = ray.origin;
+    rayDesc.Direction = ray.direction;
+    // Set TMin to a zero value to avoid aliasing artifcats along contact areas.
+    // Note: make sure to enable back-face culling so as to avoid surface face fighting.
+    rayDesc.TMin = 0;
+    rayDesc.TMax = 10000;
+
+    // Initialize shadow ray payload.
+    // Set the initial value to true since closest and any hit shaders are skipped. 
+    // Shadow miss shader, if called, will set it to false.
+    ShadowRayPayload shadowPayload = { true };
+    TraceRay(Scene,
+        RAY_FLAG_CULL_BACK_FACING_TRIANGLES
+        | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH
+        | RAY_FLAG_FORCE_OPAQUE // ~skip any hit shaders
+        | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER, // ~skip closest hit shaders,
+        TraceRayParameters::InstanceMask,
+        TraceRayParameters::HitGroup::Offset[RayType::Shadow],
+        TraceRayParameters::HitGroup::GeometryStride,
+        TraceRayParameters::MissShader::Offset[RayType::Shadow],
+        rayDesc,
+        shadowPayload
+    );
+
+    return shadowPayload.hit;
 }
 
 [shader("closesthit")]
@@ -139,9 +177,15 @@ void TriangleClosestHitShader(inout RayPayload payload, in TriangleAttributes at
     // This is redundant and done for illustration purposes 
     // as all the per-vertex normals are the same and match triangle's normal in this sample. 
     float3 triangleNormal = HitAttribute(vertexNormals, attr);
+        
+
+    // Shadow component.
+    // Trace a shadow ray.
+    Ray shadowRay = { hitPosition, normalize(g_sceneCB.lightPosition.xyz - hitPosition) };
+    float shadowRayHit = TraceShadowRayAndReportIfHit(shadowRay) ? 0.0 : 1.0;
 
     float4 diffuseColor = CalculateDiffuseLighting(hitPosition, triangleNormal);
-    float4 color = g_sceneCB.lightAmbientColor + diffuseColor;
+    float4 color = g_sceneCB.lightAmbientColor + diffuseColor * shadowRayHit;
 
     payload.color = color;
 }
