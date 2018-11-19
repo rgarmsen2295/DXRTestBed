@@ -166,7 +166,7 @@ void D3D12RaytracingSimpleLighting::InitializeScene()
         lightAmbientColor = XMFLOAT4(0.5f, 0.5f, 0.5f, 1.0f);
         m_sceneCB[frameIndex].lightAmbientColor = XMLoadFloat4(&lightAmbientColor);
 
-        lightDiffuseColor = XMFLOAT4(0.5f, 0.0f, 0.0f, 1.0f);
+        lightDiffuseColor = XMFLOAT4(0.5f, 0.5f, 0.5f, 1.0f);
         m_sceneCB[frameIndex].lightDiffuseColor = XMLoadFloat4(&lightDiffuseColor);
     }
 
@@ -300,21 +300,79 @@ void D3D12RaytracingSimpleLighting::LoadTextures()
 	// Load image file.
 	std::string sphereTexName = "earth_big.jpg"; // Random image from sponza for now.
 	std::string mtlPath = "resources/";
-	m_sphereTexture = DX12Util::loadTexture(device, sphereTexName, mtlPath, stbi_load);
 
 	// Upload texture to GPU (and create things like mip-maps).
 	ResourceUploadBatch resourceUploader(device);
 	resourceUploader.Begin();
 
-	// Upload Sphere texture
-	UINT sphereDiffuseHeapIndex = UploadTexture(device, resourceUploader, m_sphereTexture);
+	// Load Sponza Textures.
+	{
+		// Load from file.
+		auto & shape = m_sponza;
+		for (auto & material : shape->getMaterials()) {
+			if (material.diffuseTex != "") {
+				if (shape->m_diffuseTextures.find(material.diffuseTex) == shape->m_diffuseTextures.end()) {
+					shape->m_diffuseTextures.insert(
+						std::pair<std::string, std::shared_ptr<Texture>>(
+							material.diffuseTex,
+							DX12Util::loadTexture(device, material.diffuseTex, mtlPath + "textures/", stbi_load)));
+				}
+			}
+			/*if (material.specularTex != "") {
+				if (m_specularTextures.find(material.specularTex) == m_specularTextures.end()) {
+					m_specularTextures.insert(
+						std::pair<std::string, std::shared_ptr<Texture>>(
+							material.specularTex,
+							DX12Util::loadTexture(m_device, material.specularTex, resourcePath + "textures/", stbi_load)));
+				}
+			}
+			if (material.normalTex != "") {
+				if (m_normalTextures.find(material.normalTex) == m_normalTextures.end()) {
+					m_normalTextures.insert(
+						std::pair<std::string, std::shared_ptr<Texture>>(
+							material.normalTex,
+							DX12Util::loadTexture(m_device, material.normalTex, resourcePath + "textures/", stbi_load)));
+				}
+			}*/
+		}
+
+		// Upload to GPU.
+		for (auto & texturePair : shape->m_diffuseTextures) {
+			std::shared_ptr<Texture> texture = texturePair.second;
+			//DX12Util::initTextures(device, resourceUploader, m_srvHeap, m_srvDescriptorSize, texture, m_nextSrvHeapIndex);
+
+			// Upload texture.
+			UINT diffuseTextureHeapIndex = UploadTexture(device, resourceUploader, texture);
+
+			texture->gpuHandle =
+				CD3DX12_GPU_DESCRIPTOR_HANDLE(m_descriptorHeap->GetGPUDescriptorHandleForHeapStart(), diffuseTextureHeapIndex, m_descriptorSize);
+		}
+		/*for (auto & texturePair : m_specularTextures) {
+			std::shared_ptr<Texture> texture = texturePair.second;
+			DX12Util::initTextures(m_device, resourceUploader, m_srvHeap, m_srvDescriptorSize, texture, m_nextSrvHeapIndex);
+			m_nextSrvHeapIndex++;
+		}
+		for (auto & texturePair : m_normalTextures) {
+			std::shared_ptr<Texture> texture = texturePair.second;
+			DX12Util::initTextures(m_device, resourceUploader, m_srvHeap, m_srvDescriptorSize, texture, m_nextSrvHeapIndex);
+			m_nextSrvHeapIndex++;
+		}*/
+	}
+
+	// Load Sphere Texture(s).
+	{
+		m_sphereTexture = DX12Util::loadTexture(device, sphereTexName, mtlPath, stbi_load);
+
+		// Upload Sphere texture
+		UINT sphereDiffuseHeapIndex = UploadTexture(device, resourceUploader, m_sphereTexture);
+
+		m_sphereTexture->gpuHandle =
+			CD3DX12_GPU_DESCRIPTOR_HANDLE(m_descriptorHeap->GetGPUDescriptorHandleForHeapStart(), sphereDiffuseHeapIndex, m_descriptorSize);
+	}
 
 	// Use synchronously for now.
 	std::future<void> uploadFinish = resourceUploader.End(commandQueue);
 	uploadFinish.wait();
-
-	m_sphereDiffuseTextureResourceGpuDescriptor =
-		CD3DX12_GPU_DESCRIPTOR_HANDLE(m_descriptorHeap->GetGPUDescriptorHandleForHeapStart(), sphereDiffuseHeapIndex, m_descriptorSize);
 }
 
 // Create resources that depend on the device.
@@ -395,12 +453,18 @@ void D3D12RaytracingSimpleLighting::CreateRootSignatures()
     // Triangle Local Root Signature
     // This is a root signature that enables a shader to have unique arguments that come from shader tables.
     {
-		CD3DX12_DESCRIPTOR_RANGE ranges[1]; // Perfomance TIP: Order from most frequent to least frequent.
-		ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 1);  // 2 static index and vertex buffers.
+		CD3DX12_DESCRIPTOR_RANGE ranges[4]; // Perfomance TIP: Order from most frequent to least frequent.
+		ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // 2 static index and vertex buffers.
+		ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);  // 2 static index and vertex buffers.
+		ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);  // 1 diffuse texture slot.
+		ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4);  // 1 normal map/texture slot.
 
         CD3DX12_ROOT_PARAMETER rootParameters[TriangleLocalRootSignatureParams::Count];
         rootParameters[TriangleLocalRootSignatureParams::CubeConstantSlot].InitAsConstants(SizeOfInUint32(m_cubeCB), 1);
-		rootParameters[TriangleLocalRootSignatureParams::VertexBuffers].InitAsDescriptorTable(1, &ranges[0]);
+		rootParameters[TriangleLocalRootSignatureParams::IndexBuffers].InitAsDescriptorTable(1, &ranges[0]);
+		rootParameters[TriangleLocalRootSignatureParams::VertexBuffers].InitAsDescriptorTable(1, &ranges[1]);
+		rootParameters[TriangleLocalRootSignatureParams::DiffuseTexture].InitAsDescriptorTable(1, &ranges[2]);
+		rootParameters[TriangleLocalRootSignatureParams::NormalTexture].InitAsDescriptorTable(1, &ranges[3]);
 
         CD3DX12_ROOT_SIGNATURE_DESC localRootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
         localRootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE;
@@ -410,7 +474,7 @@ void D3D12RaytracingSimpleLighting::CreateRootSignatures()
 	// AABB geometry (sphere only right now)
 	{
 		CD3DX12_DESCRIPTOR_RANGE ranges[1];
-		ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);  // Sphere texture slot
+		ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5);  // Sphere texture slot
 
 		CD3DX12_ROOT_PARAMETER rootParameters[AABBLocalRootSignatureParams::Count];
 		rootParameters[AABBLocalRootSignatureParams::SphereConstantSlot].InitAsConstants(SizeOfInUint32(Sphere), 2);
@@ -1016,7 +1080,7 @@ void D3D12RaytracingSimpleLighting::CreateDescriptorHeap()
 
     D3D12_DESCRIPTOR_HEAP_DESC descriptorHeapDesc = {};
     // Allocate a heap for 5 descriptors:
-    // numGeometry * 2 - vertex and index buffer SRVs
+    // numGeometry * 3 - vertex buffers, index buffers, and diffuse texture SRVs
     // 1 - raytracing output texture SRV
     // 3 - 2 bottom and 1 top level acceleration structure fallback wrapped pointer UAVs
 	// 1 - texture for sphere
@@ -1025,7 +1089,7 @@ void D3D12RaytracingSimpleLighting::CreateDescriptorHeap()
 #else
 	UINT numGeometry = m_sponza->m_obj_count;
 #endif
-	descriptorHeapDesc.NumDescriptors = numGeometry * 2 + 1 + 3 + 1;
+	descriptorHeapDesc.NumDescriptors = numGeometry * 3 + 1 + 3 + 1;
     descriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     descriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     descriptorHeapDesc.NodeMask = 0;
@@ -1200,7 +1264,10 @@ void D3D12RaytracingSimpleLighting::BuildShaderTables()
     {
 		struct TriangleRootArguments {
 			CubeConstantBuffer cb;
+			D3D12_GPU_DESCRIPTOR_HANDLE indexBufferGPUHandle;
 			D3D12_GPU_DESCRIPTOR_HANDLE vertexBufferGPUHandle;
+			D3D12_GPU_DESCRIPTOR_HANDLE diffuseTextureGPUHandle;
+			D3D12_GPU_DESCRIPTOR_HANDLE normalTextureGPUHandle;
 		} triangleRootArguments;
 
 		struct AABBRootArguments {
@@ -1230,9 +1297,17 @@ void D3D12RaytracingSimpleLighting::BuildShaderTables()
 			for (UINT i = 0; i < numTriangleShaderRecords; i++)
 			{
 #ifdef SHOW_CUBE
-				triangleRootArguments.vertexBufferGPUHandle = m_cubeIndexBuffer.gpuDescriptorHandle;
+				triangleRootArguments.indexBufferGPUHandle = m_cubeIndexBuffer.gpuDescriptorHandle;
+				triangleRootArguments.vertexBufferGPUHandle = m_cubeVertexBuffer.gpuDescriptorHandle;
 #else
-				triangleRootArguments.vertexBufferGPUHandle = m_sponza->m_indexBuffer[i].gpuDescriptorHandle;
+				triangleRootArguments.indexBufferGPUHandle = m_sponza->m_indexBuffer[i].gpuDescriptorHandle;
+				triangleRootArguments.vertexBufferGPUHandle = m_sponza->m_vertexBuffer[i].gpuDescriptorHandle;
+
+				// Attach diffuse texture.
+				triangleRootArguments.cb.useDiffuseTexture = m_sponza->GetDiffuseTextureGPUHandle(triangleRootArguments.diffuseTextureGPUHandle, i) ? 1 : 0;
+
+				// Attach normal texture.
+				triangleRootArguments.normalTextureGPUHandle = m_sphereTexture->gpuHandle;
 #endif
 				//hitGroupShaderTable.push_back(ShaderRecord(hitGroupShaderIdentifier, shaderIdentifierSize, &triangleRootArguments, sizeof(triangleRootArguments)));
 				for (auto& hitGroupShaderID : hitGroupShaderIDs_TriangleGeometry)
@@ -1248,7 +1323,7 @@ void D3D12RaytracingSimpleLighting::BuildShaderTables()
 			for (UINT i = 0; i < numAABBShaderRecords; i++)
 			{
 				aabbRootArguments.sphereConstant = m_sphere;
-				aabbRootArguments.diffuseTexture = m_sphereDiffuseTextureResourceGpuDescriptor;
+				aabbRootArguments.diffuseTexture = m_sphereTexture->gpuHandle;
 
 				for (auto& hitGroupShaderID : hitGroupShaderIDs_AABBGeometry)
 				{

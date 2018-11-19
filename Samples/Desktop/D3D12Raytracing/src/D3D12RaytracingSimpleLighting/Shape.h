@@ -36,6 +36,7 @@ public:
 	// Access functions
 	std::vector<Material> & getMaterials() { return m_materials; }
 	UINT numMaterials() { return m_materials.size(); }
+	bool GetDiffuseTextureGPUHandle(D3D12_GPU_DESCRIPTOR_HANDLE & gpuHandle, UINT shapeIndex);
 
 	// CPU Resources
 	int m_obj_count = 0;
@@ -45,6 +46,9 @@ public:
 	// GPU Resources
 	std::vector<D3DBuffer> m_vertexBuffer = std::vector<D3DBuffer>();
 	std::vector<D3DBuffer> m_indexBuffer = std::vector<D3DBuffer>();
+
+	std::unordered_map<std::string, std::shared_ptr<Texture>> m_diffuseTextures;
+	std::unordered_map<std::string, std::shared_ptr<Texture>> m_normalTextures;
 
 private:
 

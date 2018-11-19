@@ -34,7 +34,10 @@ namespace GlobalRootSignatureParams {
 namespace TriangleLocalRootSignatureParams {
     enum Value {
         CubeConstantSlot = 0,
+		IndexBuffers,
 		VertexBuffers,
+		DiffuseTexture,
+		NormalTexture,
         Count 
     };
 }
@@ -133,7 +136,7 @@ private:
 	std::shared_ptr<Shape> m_sponza;
 	Sphere m_sphere;
 	std::shared_ptr<Texture> m_sphereTexture;
-	D3D12_GPU_DESCRIPTOR_HANDLE m_sphereDiffuseTextureResourceGpuDescriptor;
+
 	UINT m_geometryDescriptorIndex;
 
 	// Cube indices.

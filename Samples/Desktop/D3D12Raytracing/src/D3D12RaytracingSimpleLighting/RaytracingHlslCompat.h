@@ -49,6 +49,7 @@ struct SceneConstantBuffer
 struct CubeConstantBuffer
 {
     XMFLOAT4 albedo;
+	UINT	 useDiffuseTexture;
 };
 
 struct Vertex

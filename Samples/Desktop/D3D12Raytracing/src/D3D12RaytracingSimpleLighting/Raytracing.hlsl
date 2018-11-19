@@ -32,10 +32,12 @@ ConstantBuffer<SceneConstantBuffer> g_sceneCB : register(b0);
 ConstantBuffer<CubeConstantBuffer> l_cubeCB : register(b1);
 StructuredBuffer<Index> Indices : register(t1, space0);
 StructuredBuffer<Vertex> Vertices : register(t2, space0);
+Texture2D<float4> l_triangleDiffuseTex : register(t3, space0);
+Texture2D<float4> l_triangleNormalTex : register(t4, space0);
 
 // Sphere Local Resources
 ConstantBuffer<Sphere> l_sphereCB : register(b2);
-Texture2D<float4> l_sphereDiffuseTex : register(t3, space0);
+Texture2D<float4> l_sphereDiffuseTex : register(t5, space0);
 
 typedef BuiltInTriangleIntersectionAttributes TriangleAttributes;
 
@@ -173,10 +175,18 @@ void TriangleClosestHitShader(inout RayPayload payload, in TriangleAttributes at
         Vertices[indices[2]].normal 
     };
 
+    float3 vertexUVs[3] =
+    {
+        float3(Vertices[indices[0]].uv, 0.0),
+        float3(Vertices[indices[1]].uv, 0.0),
+        float3(Vertices[indices[2]].uv, 0.0)
+    };
+
     // Compute the triangle's normal.
     // This is redundant and done for illustration purposes 
     // as all the per-vertex normals are the same and match triangle's normal in this sample. 
     float3 triangleNormal = HitAttribute(vertexNormals, attr);
+    float2 textureUV = HitAttribute(vertexUVs, attr).rg;
 
     // Shadow component.
     // Trace a shadow ray.
@@ -184,8 +194,18 @@ void TriangleClosestHitShader(inout RayPayload payload, in TriangleAttributes at
     float shadowRayHit = TraceShadowRayAndReportIfHit(shadowRay) ? 0.0 : 1.0;
 
     float4 diffuseColor = CalculateDiffuseLighting(hitPosition, triangleNormal);
-    float4 color = g_sceneCB.lightAmbientColor + diffuseColor * shadowRayHit;
 
+    // Get texture values.
+    float4 diffuseTextureColor = float4(1.0, 1.0, 1.0, 1.0);
+    if (l_cubeCB.useDiffuseTexture > 0)
+    {
+        uint2 texDimsTemp;
+        l_triangleDiffuseTex.GetDimensions(texDimsTemp.x, texDimsTemp.y);
+        int2 texDims = texDimsTemp - 1;
+        diffuseTextureColor = l_triangleDiffuseTex.Load(int3(abs(int2(textureUV * texDims)) % texDims, 0.0));
+    }
+
+    float4 color = g_sceneCB.lightAmbientColor * diffuseTextureColor + diffuseColor * diffuseTextureColor * shadowRayHit;
     payload.color = color;
 }
 
@@ -211,7 +231,7 @@ float2 GetSphereTexCoords(in float3 surfacePosition, in float3 normal)
     static const float PI = 3.14159265f;
 
     float2 uv;
-    uv.x = atan2(normal.x, normal.z) / (2 * PI) + 0.5;
+    uv.x = atan2(-normal.x, normal.z) / (2 * PI) + 0.5;
     uv.y = normal.y * 0.5 + 0.5;
 
     return uv;
@@ -221,7 +241,7 @@ float4 GetSphereTextureColor(in float3 hitPosition, in float3 normal)
 {
     float2 ddx_uv;
     float2 ddy_uv;
-    float2 uv = clamp(GetSphereTexCoords(hitPosition, normal), 0.0, 1.0);
+    float2 uv = GetSphereTexCoords(hitPosition, normal);
 
     uint2 texDimsTemp;
     l_sphereDiffuseTex.GetDimensions(texDimsTemp.x, texDimsTemp.y);
@@ -229,14 +249,13 @@ float4 GetSphereTextureColor(in float3 hitPosition, in float3 normal)
     int2 texDims = texDimsTemp - 1;
 
     //CalculateRayDifferentials(ddx_uv, ddy_uv, uv, hitPosition, surfaceNormal, cameraPosition, projectionToWorld);
-    return l_sphereDiffuseTex.Load(int3(int2(uv * texDims), 0.0));
-}
+        return l_sphereDiffuseTex.Load(int3(abs(int2(uv * texDims)) % texDims, 0.0));
+    }
 
 [shader("closesthit")]
 void AABBClosestHitShader(inout RayPayload payload, in ProceduralPrimitiveAttributes attr)
 {
     float3 hitPosition = HitWorldPosition();
-
     float4 textureColor = GetSphereTextureColor(hitPosition, attr.normal);
 
     // Shadow component.
@@ -244,7 +263,7 @@ void AABBClosestHitShader(inout RayPayload payload, in ProceduralPrimitiveAttrib
     Ray shadowRay = { hitPosition, normalize(g_sceneCB.lightPosition.xyz - hitPosition) };
     float shadowRayHit = TraceShadowRayAndReportIfHit(shadowRay) ? 0.0 : 1.0;
 
-    payload.color = textureColor * 0.2 + textureColor * CalculateDiffuseLighting(HitWorldPosition(), attr.normal) * shadowRayHit;
+    payload.color = textureColor * g_sceneCB.lightAmbientColor + textureColor * CalculateDiffuseLighting(HitWorldPosition(), attr.normal) * shadowRayHit;
     payload.color.a = 1.0;
 
 }

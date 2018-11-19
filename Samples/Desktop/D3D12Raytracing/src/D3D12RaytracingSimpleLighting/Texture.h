@@ -18,4 +18,5 @@ struct Texture
 
 	ComPtr<ID3D12Resource> Resource = nullptr;
 	ComPtr<ID3D12Resource> UploadHeap = nullptr;
+	D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle;
 };
