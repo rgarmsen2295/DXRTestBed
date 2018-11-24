@@ -459,3 +459,25 @@ bool Shape::GetDiffuseTextureGPUHandle(D3D12_GPU_DESCRIPTOR_HANDLE & gpuHandle, 
 	// Texture not found.
 	return false;
 }
+
+bool Shape::GetNormalTextureGPUHandle(D3D12_GPU_DESCRIPTOR_HANDLE & gpuHandle, UINT shapeIndex)
+{
+	UINT materialId = 0;
+	if (m_materialIDs[shapeIndex] != -1) {
+		materialId = m_materialIDs[shapeIndex];
+
+		const Material & mat = m_materials[materialId];
+		std::string diffuseTexName = mat.diffuseTex;
+		if (diffuseTexName != "") {
+			// Get texture from map
+			std::shared_ptr<Texture> diffuseTex = m_diffuseTextures[diffuseTexName];
+
+			// Texture found.
+			gpuHandle = diffuseTex->gpuHandle;
+			return true;
+		}
+	}
+
+	// Texture not found.
+	return false;
+}

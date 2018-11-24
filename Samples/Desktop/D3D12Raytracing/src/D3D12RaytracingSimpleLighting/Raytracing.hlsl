@@ -53,6 +53,26 @@ float3 HitAttribute(float3 vertexAttribute[3], BuiltInTriangleIntersectionAttrib
     return vertexAttribute[0] +
         attr.barycentrics.x * (vertexAttribute[1] - vertexAttribute[0]) +
         attr.barycentrics.y * (vertexAttribute[2] - vertexAttribute[0]);
+    }
+
+// Generate a ray in world space for a camera pixel corresponding to an index from the dispatched 2D grid.
+inline Ray GenerateCameraRay(uint2 index, in float3 cameraPosition, in float4x4 projectionToWorld)
+{
+    float2 xy = index + 0.5f; // center in the middle of the pixel.
+    float2 screenPos = xy / DispatchRaysDimensions().xy * 2.0 - 1.0;
+
+    // Invert Y for DirectX-style coordinates.
+    screenPos.y = -screenPos.y;
+
+    // Unproject the pixel coordinate into a world positon.
+    float4 world = mul(float4(screenPos, 0, 1), projectionToWorld);
+    world.xyz /= world.w;
+
+    Ray ray;
+    ray.origin = cameraPosition;
+    ray.direction = normalize(world.xyz - ray.origin);
+
+    return ray;
 }
 
 // Generate a ray in world space for a camera pixel corresponding to an index from the dispatched 2D grid.
@@ -81,6 +101,22 @@ float4 CalculateDiffuseLighting(float3 hitPosition, float3 normal)
     float fNDotL = max(0.0f, dot(pixelToLight, normal));
 
     return g_sceneCB.lightDiffuseColor * fNDotL;
+    }
+
+// Calculate ray differentials.
+void CalculateRayDifferentials(out float2 ddx_uv, out float2 ddy_uv, in float2 uv, in float3 hitPosition, in float3 surfaceNormal, in float3 cameraPosition, in float4x4 projectionToWorld)
+{
+    // Compute ray differentials by intersecting the tangent plane to the  surface.
+    Ray ddx = GenerateCameraRay(DispatchRaysIndex().xy + uint2(1, 0), cameraPosition, projectionToWorld);
+    Ray ddy = GenerateCameraRay(DispatchRaysIndex().xy + uint2(0, 1), cameraPosition, projectionToWorld);
+
+    // Compute ray differentials.
+    float3 ddx_pos = ddx.origin - ddx.direction * dot(ddx.origin - hitPosition, surfaceNormal) / dot(ddx.direction, surfaceNormal);
+    float3 ddy_pos = ddy.origin - ddy.direction * dot(ddy.origin - hitPosition, surfaceNormal) / dot(ddy.direction, surfaceNormal);
+
+    // Calculate texture sampling footprint.
+    ddx_uv = /*TexCoords(ddx_pos) -*/ uv;
+    ddy_uv = /*TexCoords(ddy_pos) -*/ uv;
 }
 
 [shader("raygeneration")]
@@ -182,11 +218,28 @@ void TriangleClosestHitShader(inout RayPayload payload, in TriangleAttributes at
         float3(Vertices[indices[2]].uv, 0.0)
     };
 
-    // Compute the triangle's normal.
-    // This is redundant and done for illustration purposes 
-    // as all the per-vertex normals are the same and match triangle's normal in this sample. 
-    float3 triangleNormal = HitAttribute(vertexNormals, attr);
     float2 textureUV = HitAttribute(vertexUVs, attr).rg;
+
+    // Get texture values.
+        float3 triangleNormal;
+    if (l_cubeCB.useNormalTexture > 0)
+    {
+        uint2 texDimsTemp;
+        l_triangleNormalTex.GetDimensions(texDimsTemp.x, texDimsTemp.y);
+        int2 texDims = texDimsTemp - 1;
+
+        triangleNormal = l_triangleDiffuseTex.Load(int3(abs(int2(textureUV * texDims)) % texDims, 0.0));
+        
+        // Disable normal mapping for now.    
+        triangleNormal = HitAttribute(vertexNormals, attr);
+    }
+    else
+    {
+        // Compute the triangle's normal.
+        // This is redundant and done for illustration purposes 
+        // as all the per-vertex normals are the same and match triangle's normal in this sample. 
+        triangleNormal = HitAttribute(vertexNormals, attr);
+    }
 
     // Shadow component.
     // Trace a shadow ray.
@@ -194,36 +247,28 @@ void TriangleClosestHitShader(inout RayPayload payload, in TriangleAttributes at
     float shadowRayHit = TraceShadowRayAndReportIfHit(shadowRay) ? 0.0 : 1.0;
 
     float4 diffuseColor = CalculateDiffuseLighting(hitPosition, triangleNormal);
-
-    // Get texture values.
+    
     float4 diffuseTextureColor = float4(1.0, 1.0, 1.0, 1.0);
+    float alpha = 1.0;
     if (l_cubeCB.useDiffuseTexture > 0)
     {
         uint2 texDimsTemp;
         l_triangleDiffuseTex.GetDimensions(texDimsTemp.x, texDimsTemp.y);
         int2 texDims = texDimsTemp - 1;
+
+        //float2 ddx_uv;
+        //float2 ddy_uv;
+        //CalculateRayDifferentials(ddx_uv, ddy_uv, textureUV, hitPosition, triangleNormal, g_sceneCB.cameraPosition, g_sceneCB.projectionToWorld);
+
         diffuseTextureColor = l_triangleDiffuseTex.Load(int3(abs(int2(textureUV * texDims)) % texDims, 0.0));
+        alpha = diffuseTextureColor.a;
     }
 
     float4 color = g_sceneCB.lightAmbientColor * diffuseTextureColor + diffuseColor * diffuseTextureColor * shadowRayHit;
+    color.a = alpha;
+
     payload.color = color;
 }
-
-// Calculate ray differentials.
-//void CalculateRayDifferentials(out float2 ddx_uv, out float2 ddy_uv, in float2 uv, in float3 hitPosition, in float3 surfaceNormal, in float3 cameraPosition, in float4x4 projectionToWorld)
-//{
-//    // Compute ray differentials by intersecting the tangent plane to the  surface.
-//    Ray ddx = GenerateCameraRay(DispatchRaysIndex().xy + uint2(1, 0), cameraPosition, projectionToWorld);
-//    Ray ddy = GenerateCameraRay(DispatchRaysIndex().xy + uint2(0, 1), cameraPosition, projectionToWorld);
-
-//    // Compute ray differentials.
-//    float3 ddx_pos = ddx.origin - ddx.direction * dot(ddx.origin - hitPosition, surfaceNormal) / dot(ddx.direction, surfaceNormal);
-//    float3 ddy_pos = ddy.origin - ddy.direction * dot(ddy.origin - hitPosition, surfaceNormal) / dot(ddy.direction, surfaceNormal);
-
-//    // Calculate texture sampling footprint.
-//    ddx_uv = TexCoords(ddx_pos) - uv;
-//    ddy_uv = TexCoords(ddy_pos) - uv;
-//}
 
 // Source: https://gamedev.stackexchange.com/questions/114412/how-to-get-uv-coordinates-for-sphere-cylindrical-projection
 float2 GetSphereTexCoords(in float3 surfacePosition, in float3 normal)

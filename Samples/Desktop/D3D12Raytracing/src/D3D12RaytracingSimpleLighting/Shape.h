@@ -37,6 +37,7 @@ public:
 	std::vector<Material> & getMaterials() { return m_materials; }
 	UINT numMaterials() { return m_materials.size(); }
 	bool GetDiffuseTextureGPUHandle(D3D12_GPU_DESCRIPTOR_HANDLE & gpuHandle, UINT shapeIndex);
+	bool GetNormalTextureGPUHandle(D3D12_GPU_DESCRIPTOR_HANDLE & gpuHandle, UINT shapeIndex);
 
 	// CPU Resources
 	int m_obj_count = 0;

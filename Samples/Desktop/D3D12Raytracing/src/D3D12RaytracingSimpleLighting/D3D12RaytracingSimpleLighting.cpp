@@ -325,21 +325,20 @@ void D3D12RaytracingSimpleLighting::LoadTextures()
 							material.specularTex,
 							DX12Util::loadTexture(m_device, material.specularTex, resourcePath + "textures/", stbi_load)));
 				}
-			}
+			}*/
 			if (material.normalTex != "") {
-				if (m_normalTextures.find(material.normalTex) == m_normalTextures.end()) {
-					m_normalTextures.insert(
+				if (shape->m_normalTextures.find(material.normalTex) == shape->m_normalTextures.end()) {
+					shape->m_normalTextures.insert(
 						std::pair<std::string, std::shared_ptr<Texture>>(
 							material.normalTex,
-							DX12Util::loadTexture(m_device, material.normalTex, resourcePath + "textures/", stbi_load)));
+							DX12Util::loadTexture(device, material.normalTex, mtlPath + "textures/", stbi_load)));
 				}
-			}*/
+			}
 		}
 
 		// Upload to GPU.
 		for (auto & texturePair : shape->m_diffuseTextures) {
 			std::shared_ptr<Texture> texture = texturePair.second;
-			//DX12Util::initTextures(device, resourceUploader, m_srvHeap, m_srvDescriptorSize, texture, m_nextSrvHeapIndex);
 
 			// Upload texture.
 			UINT diffuseTextureHeapIndex = UploadTexture(device, resourceUploader, texture);
@@ -351,12 +350,16 @@ void D3D12RaytracingSimpleLighting::LoadTextures()
 			std::shared_ptr<Texture> texture = texturePair.second;
 			DX12Util::initTextures(m_device, resourceUploader, m_srvHeap, m_srvDescriptorSize, texture, m_nextSrvHeapIndex);
 			m_nextSrvHeapIndex++;
-		}
-		for (auto & texturePair : m_normalTextures) {
-			std::shared_ptr<Texture> texture = texturePair.second;
-			DX12Util::initTextures(m_device, resourceUploader, m_srvHeap, m_srvDescriptorSize, texture, m_nextSrvHeapIndex);
-			m_nextSrvHeapIndex++;
 		}*/
+		for (auto & texturePair : shape->m_normalTextures) {
+			std::shared_ptr<Texture> texture = texturePair.second;
+
+			// Upload texture.
+			UINT normalTextureHeapIndex = UploadTexture(device, resourceUploader, texture);
+
+			texture->gpuHandle =
+				CD3DX12_GPU_DESCRIPTOR_HANDLE(m_descriptorHeap->GetGPUDescriptorHandleForHeapStart(), normalTextureHeapIndex, m_descriptorSize);
+		}
 	}
 
 	// Load Sphere Texture(s).
@@ -1307,7 +1310,7 @@ void D3D12RaytracingSimpleLighting::BuildShaderTables()
 				triangleRootArguments.cb.useDiffuseTexture = m_sponza->GetDiffuseTextureGPUHandle(triangleRootArguments.diffuseTextureGPUHandle, i) ? 1 : 0;
 
 				// Attach normal texture.
-				triangleRootArguments.normalTextureGPUHandle = m_sphereTexture->gpuHandle;
+				triangleRootArguments.cb.useNormalTexture = m_sponza->GetNormalTextureGPUHandle(triangleRootArguments.normalTextureGPUHandle, i) ? 1 : 0;
 #endif
 				//hitGroupShaderTable.push_back(ShaderRecord(hitGroupShaderIdentifier, shaderIdentifierSize, &triangleRootArguments, sizeof(triangleRootArguments)));
 				for (auto& hitGroupShaderID : hitGroupShaderIDs_TriangleGeometry)
