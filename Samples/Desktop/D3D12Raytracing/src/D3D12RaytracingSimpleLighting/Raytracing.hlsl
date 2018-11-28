@@ -227,7 +227,7 @@ void TriangleClosestHitShader(inout RayPayload payload, in TriangleAttributes at
         uint2 texDimsTemp;
         l_triangleNormalTex.GetDimensions(texDimsTemp.x, texDimsTemp.y);
         int2 texDims = texDimsTemp - 1;
-
+             
         triangleNormal = l_triangleDiffuseTex.Load(int3(abs(int2(textureUV * texDims)) % texDims, 0.0));
         
         // Disable normal mapping for now.    

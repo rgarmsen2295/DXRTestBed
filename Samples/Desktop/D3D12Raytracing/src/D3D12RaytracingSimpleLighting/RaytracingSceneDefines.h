@@ -80,7 +80,8 @@ namespace LocalRootSignature {
 
 namespace GeometryType {
     enum Enum {
-        Triangle = 0,
+        TriangleSponza = 0,
+		TriangleCharacter,
         AABB,       // Procedural geometry with an application provided AABB.
         Count
     };

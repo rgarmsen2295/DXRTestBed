@@ -50,7 +50,7 @@ namespace AABBLocalRootSignatureParams {
 	};
 }
 
-const UINT LocalRootSignatureCount = 2;
+const UINT LocalRootSignatureCount = 3;
 
 // The sample supports both Raytracing Fallback Layer and DirectX Raytracing APIs. 
 // This is purely for demonstration purposes to show where the API differences are. 
@@ -85,7 +85,7 @@ private:
     static const UINT FrameCount = 3;
 
 	// Constants.
-	const UINT NUM_BLAS = 2;          // Triangle + AABB bottom-level AS.
+	const UINT NUM_BLAS = 3;          // Triangle + AABB bottom-level AS.
 	const float c_aabbWidth = 1;      // AABB width.
 	const float c_aabbDistance = 1;   // Distance between AABBs.
 
@@ -134,6 +134,7 @@ private:
     D3DBuffer m_cubeIndexBuffer;
     D3DBuffer m_cubeVertexBuffer;
 	std::shared_ptr<Shape> m_sponza;
+	std::shared_ptr<Shape> m_character;
 	Sphere m_sphere;
 	std::shared_ptr<Texture> m_sphereTexture;
 
