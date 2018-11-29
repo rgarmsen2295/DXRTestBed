@@ -15,6 +15,8 @@
 #define HLSL
 #include "RaytracingHlslCompat.h"
 
+#define MAX_RAY_RECURSION_DEPTH 3
+
 struct Ray
 {
     float3 origin;
@@ -137,7 +139,7 @@ void MyRaygenShader()
     // TMin should be kept small to prevent missing geometry at close contact areas.
     ray.TMin = 0.001;
     ray.TMax = 10000.0;
-    RayPayload payload = { float4(0, 0, 0, 0) };
+    RayPayload payload = { float4(0, 0, 0, 0), 1, false };
     TraceRay(Scene,
 		RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
 		TraceRayParameters::InstanceMask,
@@ -149,15 +151,15 @@ void MyRaygenShader()
     );
     
     RenderTarget[DispatchRaysIndex().xy] = payload.color;
-    }
+}
 
 // Trace a shadow ray and return true if it hits any geometry.
-bool TraceShadowRayAndReportIfHit(in Ray ray)
+bool TraceShadowRayAndReportIfHit(in Ray ray, UINT currentRayRecursionDepth)
 {
-    //if (currentRayRecursionDepth >= MAX_RAY_RECURSION_DEPTH)
-    //{
-    //    return false;
-    //}
+    if (currentRayRecursionDepth >= MAX_RAY_RECURSION_DEPTH)
+    {
+        return false;
+    }
 
     // Set the ray's extents.
     RayDesc rayDesc;
@@ -186,6 +188,69 @@ bool TraceShadowRayAndReportIfHit(in Ray ray)
     );
 
     return shadowPayload.hit;
+}
+
+// Trace a shadow ray and return true if it hits any geometry.
+RayPayload TraceGIRay(in Ray ray, UINT currentRayRecursionDepth)
+{
+    // Set the ray's extents.
+    RayDesc rayDesc;
+    rayDesc.Origin = ray.origin;
+    rayDesc.Direction = ray.direction;
+    // Set TMin to a zero value to avoid aliasing artifcats along contact areas.
+    // Note: make sure to enable back-face culling so as to avoid surface face fighting.
+    rayDesc.TMin = 0;
+    rayDesc.TMax = 10000;
+
+    // Initialize shadow ray payload.
+    // Set the initial value to true since closest and any hit shaders are skipped. 
+    // Shadow miss shader, if called, will set it to false.
+    RayPayload giPayload = { float4(0, 0, 0, 0), currentRayRecursionDepth + 1, false };
+    TraceRay(Scene,
+		RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
+		TraceRayParameters::InstanceMask,
+        TraceRayParameters::HitGroup::Offset[RayType::Radiance],
+        TraceRayParameters::HitGroup::GeometryStride,
+        TraceRayParameters::MissShader::Offset[RayType::Radiance],
+        rayDesc,
+        giPayload
+    );
+
+    return giPayload;
+}
+
+// Returns the x and y components of a ray according to the values u1 and u2 (should be passed as random values
+// between 0 and 1)
+void SampleDisk(in float u1, in float u2, out float dX, out float dY)
+{
+    static const float PI = 3.14159265f;
+
+    float r = sqrt(u1);
+    float theta = 2.0f * PI * u2;
+    dX = r * cos(theta);
+    dY = r * sin(theta);
+}
+
+// Source: http://www.iryoku.com/next-generation-post-processing-in-call-of-duty-advanced-warfare
+float InterleavedGradientNoise(float2 pixelPos)
+{
+    float3 magic = float3(0.06711056, 0.00583715, 52.9829189);
+    
+    return frac(magic.z * frac(dot(pixelPos, magic.xy)));
+}
+
+// Converted to hlsl from source: http://www.neilmendoza.com/glsl-rotation-about-an-arbitrary-axis/
+matrix RotationMatrix(float3 axis, float angle)
+{
+    axis = normalize(axis);
+    float s = sin(angle);
+    float c = cos(angle);
+    float oc = 1.0 - c;
+    
+    return matrix(oc * axis.x * axis.x + c, oc * axis.x * axis.y - axis.z * s, oc * axis.z * axis.x + axis.y * s, 0.0,
+            oc * axis.x * axis.y + axis.z * s, oc * axis.y * axis.y + c, oc * axis.y * axis.z - axis.x * s, 0.0,
+            oc * axis.z * axis.x - axis.y * s, oc * axis.y * axis.z + axis.x * s, oc * axis.z * axis.z + c, 0.0,
+            0.0, 0.0, 0.0, 1.0);
 }
 
 [shader("closesthit")]
@@ -221,7 +286,7 @@ void TriangleClosestHitShader(inout RayPayload payload, in TriangleAttributes at
     float2 textureUV = HitAttribute(vertexUVs, attr).rg;
 
     // Get texture values.
-        float3 triangleNormal;
+    float3 triangleNormal;
     if (l_cubeCB.useNormalTexture > 0)
     {
         uint2 texDimsTemp;
@@ -244,7 +309,7 @@ void TriangleClosestHitShader(inout RayPayload payload, in TriangleAttributes at
     // Shadow component.
     // Trace a shadow ray.
     Ray shadowRay = { hitPosition, normalize(g_sceneCB.lightPosition.xyz - hitPosition) };
-    float shadowRayHit = TraceShadowRayAndReportIfHit(shadowRay) ? 0.0 : 1.0;
+    float shadowRayHit = TraceShadowRayAndReportIfHit(shadowRay, payload.recursionDepth + 1) ? 0.0 : 1.0;
 
     float4 diffuseColor = CalculateDiffuseLighting(hitPosition, triangleNormal);
     
@@ -264,7 +329,54 @@ void TriangleClosestHitShader(inout RayPayload payload, in TriangleAttributes at
         alpha = diffuseTextureColor.a;
     }
 
-    float4 color = g_sceneCB.lightAmbientColor * diffuseTextureColor + diffuseColor * diffuseTextureColor * shadowRayHit;
+    // Calculate diffuse GI.
+    float4 diffuseGIColor = float4(0.0, 0.0, 0.0, 0.0);
+    if (payload.recursionDepth < 2)
+    {
+        int numGIRays = 10;
+        int numGIRaysHit = 0;
+        for (int i = 0; i < numGIRays; i++)
+        {
+            float2 u = InterleavedGradientNoise((hitPosition.xy + i) / numGIRays);
+            
+            float3 dir;
+            SampleDisk(u.x, u.y, dir.x, dir.y);
+            dir.z = sqrt(max(0.0, 1.0 - pow(dir.x, 2) - pow(dir.y, 2)));
+            
+            float3 zAxis = normalize(float3(0.0, 0.0, dir.z));
+
+            float zNormalDot = dot(triangleNormal, zAxis);
+            if (zNormalDot < 0.0f)
+            {
+				zNormalDot = dot(-triangleNormal, zAxis);
+			}
+            float rotAngle = acos(zNormalDot);
+            float3 zCrossNormalAxis = cross(zAxis, triangleNormal);
+            
+            matrix rotation = RotationMatrix(zCrossNormalAxis, rotAngle);
+
+            float3 monteDir = normalize(mul(rotation, float4(dir, 0.0)));
+
+            Ray giRay = { hitPosition, normalize(monteDir) };
+            RayPayload giPayload = TraceGIRay(giRay, payload.recursionDepth);
+
+            //if (!giPayload.isMiss)
+            //{
+                diffuseGIColor += giPayload.color;
+                numGIRaysHit++;
+            //}
+        }
+        
+        diffuseGIColor /= max(numGIRaysHit, 1);
+    }
+    else
+    {
+        // Use basic ambient "guess".
+        diffuseGIColor = g_sceneCB.lightAmbientColor;
+    }
+
+    //float4 color = g_sceneCB.lightAmbientColor * diffuseTextureColor + diffuseColor * diffuseTextureColor * shadowRayHit;
+    float4 color = (diffuseGIColor * diffuseTextureColor) + (diffuseColor * diffuseTextureColor * shadowRayHit);
     color.a = alpha;
 
     payload.color = color;
@@ -306,7 +418,7 @@ void AABBClosestHitShader(inout RayPayload payload, in ProceduralPrimitiveAttrib
     // Shadow component.
     // Trace a shadow ray.
     Ray shadowRay = { hitPosition, normalize(g_sceneCB.lightPosition.xyz - hitPosition) };
-    float shadowRayHit = TraceShadowRayAndReportIfHit(shadowRay) ? 0.0 : 1.0;
+    float shadowRayHit = TraceShadowRayAndReportIfHit(shadowRay, payload.recursionDepth) ? 0.0 : 1.0;
 
     payload.color = textureColor * g_sceneCB.lightAmbientColor + textureColor * CalculateDiffuseLighting(HitWorldPosition(), attr.normal) * shadowRayHit;
     payload.color.a = 1.0;
@@ -452,8 +564,9 @@ void SphereIntersectionShader()
 [shader("miss")]
 void MyMissShader(inout RayPayload payload)
 {
-    float4 background = float4(0.0f, 0.2f, 0.4f, 1.0f);
+    float4 background = float4(1.0f, 1.0f, 1.0f, 1.0f);//float4(0.0f, 0.2f, 0.4f, 1.0f);
     payload.color = background;
+    payload.isMiss = true;
 }
 
 [shader("miss")]

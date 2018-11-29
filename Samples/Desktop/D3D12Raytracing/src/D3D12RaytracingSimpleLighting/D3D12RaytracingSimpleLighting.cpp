@@ -696,7 +696,7 @@ void D3D12RaytracingSimpleLighting::CreateRaytracingPipelineStateObject()
     auto pipelineConfig = raytracingPipeline.CreateSubobject<CD3D12_RAYTRACING_PIPELINE_CONFIG_SUBOBJECT>();
     // PERFOMANCE TIP: Set max recursion depth as low as needed 
     // as drivers may apply optimization strategies for low recursion depths.
-    UINT maxRecursionDepth = 2; // ~ primary rays + shadow rays only. 
+    UINT maxRecursionDepth = 3; // primary ray + GI ray + shadow ray (for GI ray); max 3 rays. 
     pipelineConfig->Config(maxRecursionDepth);
 
 #if _DEBUG
@@ -1047,7 +1047,7 @@ void D3D12RaytracingSimpleLighting::BuildBotomLevelASInstanceDescs(BLASPtrType *
 		//instanceDesc.Transform[0][0] = instanceDesc.Transform[1][1] = instanceDesc.Transform[2][2] = 1;
 
 		// Calculate transformation matrix.
-		const XMVECTOR vBasePosition = vWidth * XMLoadFloat3(&XMFLOAT3(0.5f, -0.6025f, -0.1f));
+		const XMVECTOR vBasePosition = vWidth * XMLoadFloat3(&XMFLOAT3(1.0f, -0.6025f, -0.15f));
 
 		// Scale in XZ dimensions.
 		XMMATRIX mScale = XMMatrixScaling(0.1f, 0.1f, 0.1f);
@@ -1577,9 +1577,30 @@ void D3D12RaytracingSimpleLighting::OnUpdate()
     {
         float secondsToRotateAround = 8.0f;
 		float angleToRotateBy = 0.0;// -360.0f * (elapsedTime / secondsToRotateAround);
-        XMMATRIX rotate = XMMatrixRotationY(XMConvertToRadians(angleToRotateBy));
+        //XMMATRIX rotate = XMMatrixRotationY(XMConvertToRadians(angleToRotateBy));
+		//XMMATRIX translate = XMMatrixTranslationFromVector()
+
+		XMFLOAT3 lightOffset = XMFLOAT3(0.0, 0.0, 0.0);
+		if (GetKeyState('I') & 0x8000)
+		{
+			lightOffset.x += elapsedTime;
+		}
+		if (GetKeyState('K') & 0x8000)
+		{
+			lightOffset.x -= elapsedTime;
+		}
+		if (GetKeyState('L') & 0x8000)
+		{
+			lightOffset.z += elapsedTime;
+		}
+		if (GetKeyState('J') & 0x8000)
+		{
+			lightOffset.z -= elapsedTime;
+		}
+		XMMATRIX translate = XMMatrixTranslationFromVector(XMLoadFloat3(&lightOffset));
+
         const XMVECTOR& prevLightPosition = m_sceneCB[prevFrameIndex].lightPosition;
-        m_sceneCB[frameIndex].lightPosition = XMVector3Transform(prevLightPosition, rotate);
+        m_sceneCB[frameIndex].lightPosition = XMVector3Transform(prevLightPosition, translate);
     }
 }
 

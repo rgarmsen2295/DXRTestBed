@@ -29,7 +29,8 @@ struct ProceduralPrimitiveAttributes
 struct RayPayload
 {
 	XMFLOAT4 color;
-	//UINT   recursionDepth;
+	UINT   recursionDepth;
+	bool isMiss;
 };
 
 struct ShadowRayPayload
