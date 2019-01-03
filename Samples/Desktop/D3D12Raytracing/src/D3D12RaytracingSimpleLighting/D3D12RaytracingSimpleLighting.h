@@ -85,7 +85,7 @@ private:
     static const UINT FrameCount = 3;
 
 	// Constants.
-	const UINT NUM_BLAS = 3;          // Triangle + AABB bottom-level AS.
+	const UINT NUM_BLAS = 3;          // Triangle x 2 + AABB bottom-level AS.
 	const float c_aabbWidth = 1;      // AABB width.
 	const float c_aabbDistance = 1;   // Distance between AABBs.
 

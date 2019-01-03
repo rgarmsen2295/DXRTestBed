@@ -45,6 +45,9 @@ struct SceneConstantBuffer
     XMVECTOR lightPosition;
     XMVECTOR lightAmbientColor;
     XMVECTOR lightDiffuseColor;
+	UINT	 useGlobalIllumination;
+	UINT	 useNormalTexturing;
+	UINT	 numGISamples;
 };
 
 struct CubeConstantBuffer

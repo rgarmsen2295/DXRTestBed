@@ -166,8 +166,13 @@ void D3D12RaytracingSimpleLighting::InitializeScene()
         lightAmbientColor = XMFLOAT4(0.5f, 0.5f, 0.5f, 1.0f);
         m_sceneCB[frameIndex].lightAmbientColor = XMLoadFloat4(&lightAmbientColor);
 
-        lightDiffuseColor = XMFLOAT4(0.5f, 0.5f, 0.5f, 1.0f);
+        lightDiffuseColor = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
         m_sceneCB[frameIndex].lightDiffuseColor = XMLoadFloat4(&lightDiffuseColor);
+
+		m_sceneCB[frameIndex].useGlobalIllumination = 0;
+		m_sceneCB[frameIndex].useNormalTexturing = 0;
+
+		m_sceneCB[frameIndex].numGISamples = 2;
     }
 
     // Apply the initial values to all frames' buffer instances.
@@ -1555,29 +1560,29 @@ void D3D12RaytracingSimpleLighting::OnKeyDown(UINT8 key)
 // Update frame-based values.
 void D3D12RaytracingSimpleLighting::OnUpdate()
 {
-    m_timer.Tick();
-    CalculateFrameStats();
-    float elapsedTime = static_cast<float>(m_timer.GetElapsedSeconds());
-    auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
-    auto prevFrameIndex = m_deviceResources->GetPreviousFrameIndex();
+	m_timer.Tick();
+	CalculateFrameStats();
+	float elapsedTime = static_cast<float>(m_timer.GetElapsedSeconds());
+	auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
+	auto prevFrameIndex = m_deviceResources->GetPreviousFrameIndex();
 
-    // Update camera.
-    {
-        //float secondsToRotateAround = 24.0f;
-        //float angleToRotateBy = 360.0f * (elapsedTime / secondsToRotateAround);
-        //XMMATRIX rotate = XMMatrixRotationY(XMConvertToRadians(angleToRotateBy));
-        //m_eye = XMVector3Transform(m_eye, rotate);
-        //m_up = XMVector3Transform(m_up, rotate);
-        //m_at = XMVector3Transform(m_at, rotate);
+	// Update camera.
+	{
+		//float secondsToRotateAround = 24.0f;
+		//float angleToRotateBy = 360.0f * (elapsedTime / secondsToRotateAround);
+		//XMMATRIX rotate = XMMatrixRotationY(XMConvertToRadians(angleToRotateBy));
+		//m_eye = XMVector3Transform(m_eye, rotate);
+		//m_up = XMVector3Transform(m_up, rotate);
+		//m_at = XMVector3Transform(m_at, rotate);
 		m_camera.update(elapsedTime);
-        UpdateCameraMatrices();
-    }
+		UpdateCameraMatrices();
+	}
 
-    // Rotate the second light around Y axis.
-    {
-        float secondsToRotateAround = 8.0f;
+	// Rotate the second light around Y axis.
+	{
+		float secondsToRotateAround = 8.0f;
 		float angleToRotateBy = 0.0;// -360.0f * (elapsedTime / secondsToRotateAround);
-        //XMMATRIX rotate = XMMatrixRotationY(XMConvertToRadians(angleToRotateBy));
+		//XMMATRIX rotate = XMMatrixRotationY(XMConvertToRadians(angleToRotateBy));
 		//XMMATRIX translate = XMMatrixTranslationFromVector()
 
 		XMFLOAT3 lightOffset = XMFLOAT3(0.0, 0.0, 0.0);
@@ -1599,11 +1604,42 @@ void D3D12RaytracingSimpleLighting::OnUpdate()
 		}
 		XMMATRIX translate = XMMatrixTranslationFromVector(XMLoadFloat3(&lightOffset));
 
-        const XMVECTOR& prevLightPosition = m_sceneCB[prevFrameIndex].lightPosition;
-        m_sceneCB[frameIndex].lightPosition = XMVector3Transform(prevLightPosition, translate);
-    }
-}
+		const XMVECTOR& prevLightPosition = m_sceneCB[prevFrameIndex].lightPosition;
+		m_sceneCB[frameIndex].lightPosition = XMVector3Transform(prevLightPosition, translate);
 
+		static bool useGlobalIllumination = false;
+		static bool useNormalTexturing = false;
+		if (GetKeyState('G') & 0x8000)
+		{
+			useGlobalIllumination = true;
+		}
+		if (GetKeyState('H') & 0x8000)
+		{
+			useGlobalIllumination = false;
+		}
+		if (GetKeyState('N') & 0x8000)
+		{
+			useNormalTexturing = true;
+		}
+		if (GetKeyState('M') & 0x8000)
+		{
+			useNormalTexturing = false;
+		}
+		m_sceneCB[frameIndex].useGlobalIllumination = useGlobalIllumination ? 1 : 0;
+		m_sceneCB[frameIndex].useNormalTexturing = useNormalTexturing ? 1 : 0;
+
+		static UINT numGISamples = 2;
+		if (GetKeyState('O') & 0x8000)
+		{
+			numGISamples = max(numGISamples - 1, 1);
+		}
+		if (GetKeyState('P') & 0x8000)
+		{
+			numGISamples = min(numGISamples + 1, 64);
+		}
+		m_sceneCB[frameIndex].numGISamples = numGISamples;
+	}
+}
 
 // Parse supplied command line args.
 void D3D12RaytracingSimpleLighting::ParseCommandLineArgs(WCHAR* argv[], int argc)
@@ -1828,22 +1864,23 @@ void D3D12RaytracingSimpleLighting::CalculateFrameStats()
 
         if (m_raytracingAPI == RaytracingAPI::FallbackLayer)
         {
-            if (m_fallbackDevice->UsingRaytracingDriver())
+            /*if (m_fallbackDevice->UsingRaytracingDriver())
             {
                 windowText << L"(FL-DXR)";
             }
             else
             {
                 windowText << L"(FL)";
-            }
+            }*/
         }
         else
         {
-            windowText << L"(DXR)";
+            //windowText << L"(DXR)";
         }
-        windowText << setprecision(2) << fixed
-            << L"    fps: " << fps << L"     ~Million Primary Rays/s: " << MRaysPerSecond
-            << L"    GPU[" << m_deviceResources->GetAdapterID() << L"]: " << m_deviceResources->GetAdapterDescription();
+		windowText << setprecision(2) << fixed
+			<< L"    fps: " << fps << L"     ~Million Primary Rays/s: " << MRaysPerSecond
+			<< L"    GI samples: " << m_sceneCB[0].numGISamples;
+            //<< L"    GPU[" << m_deviceResources->GetAdapterID() << L"]: " << m_deviceResources->GetAdapterDescription();
         SetCustomWindowText(windowText.str().c_str());
     }
 }
