@@ -119,7 +119,7 @@ namespace IntersectionShaderType {
     }
 	static const UINT MaxPerPrimitiveTypeCount = 0;
         //max(AnalyticPrimitive::Count, max(VolumetricPrimitive::Count, SignedDistancePrimitive::Count));
-	static const UINT TotalPrimitiveCount = 1;
+	static const UINT TotalPrimitiveCount = 15;
         //AnalyticPrimitive::Count + VolumetricPrimitive::Count + SignedDistancePrimitive::Count;
 }
 

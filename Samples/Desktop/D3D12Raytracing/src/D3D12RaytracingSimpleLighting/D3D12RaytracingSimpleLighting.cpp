@@ -173,6 +173,8 @@ void D3D12RaytracingSimpleLighting::InitializeScene()
 		m_sceneCB[frameIndex].useNormalTexturing = 0;
 
 		m_sceneCB[frameIndex].numGISamples = 2;
+
+		m_sceneCB[frameIndex].showCharacterGISpheres = false;
     }
 
     // Apply the initial values to all frames' buffer instances.
@@ -748,7 +750,36 @@ void D3D12RaytracingSimpleLighting::BuildProceduralGeometryAABBs()
 
 	// Set up Sphere geometry info.
 	{
-		m_sphere.info = XMFLOAT4(0.1, -0.25, 0.0, 0.1);
+		m_numSpheres = IntersectionShaderType::TotalPrimitiveCount;
+
+		m_spheres.resize(m_numSpheres);
+		
+		// Head
+		m_spheres[0].info = XMFLOAT4(0.00, 0.50, 0.015, 0.125);
+
+		// Body
+		m_spheres[1].info = XMFLOAT4(0.00, 0.25, 0.000, 0.1875);
+		m_spheres[2].info = XMFLOAT4(0.00, 0.00, 0.000, 0.1875);
+
+		// Right Arm
+		m_spheres[3].info = XMFLOAT4(0.150, 0.250, 0.000, 0.125);
+		m_spheres[4].info = XMFLOAT4(0.235, 0.075, 0.000, 0.125);
+
+		// Left Arm
+		m_spheres[5].info = XMFLOAT4(-0.150, 0.250, 0.000, 0.125);
+		m_spheres[6].info = XMFLOAT4(-0.235, 0.075, 0.000, 0.125);
+
+		// Right Leg
+		m_spheres[7].info = XMFLOAT4(0.06, -0.05, 0.0, 0.125);
+		m_spheres[8].info = XMFLOAT4(0.09, -0.20, 0.0, 0.125);
+		m_spheres[9].info = XMFLOAT4(0.12, -0.35, 0.0, 0.125);
+		m_spheres[10].info = XMFLOAT4(0.15, -0.50, 0.0, 0.125);
+
+		// Left Leg
+		m_spheres[11].info = XMFLOAT4(-0.06, -0.05, 0.0, 0.125);
+		m_spheres[12].info = XMFLOAT4(-0.09, -0.20, 0.0, 0.125);
+		m_spheres[13].info = XMFLOAT4(-0.12, -0.35, 0.0, 0.125);
+		m_spheres[14].info = XMFLOAT4(-0.15, -0.50, 0.0, 0.125);
 	}
 
 	// Set up Sphere AABBs.
@@ -758,14 +789,17 @@ void D3D12RaytracingSimpleLighting::BuildProceduralGeometryAABBs()
 
 		// Analytic primitives.
 		{
-			m_aabbs[0] = D3D12_RAYTRACING_AABB{
-				m_sphere.info.x - m_sphere.info.w,
-				m_sphere.info.y - m_sphere.info.w,
-				m_sphere.info.z - m_sphere.info.w,
-				m_sphere.info.x + m_sphere.info.w,
-				m_sphere.info.y + m_sphere.info.w,
-				m_sphere.info.z + m_sphere.info.w
-			};
+			for (int i = 0; i < m_numSpheres; i++)
+			{
+				m_aabbs[i] = D3D12_RAYTRACING_AABB{
+					m_spheres[i].info.x - m_spheres[i].info.w,
+					m_spheres[i].info.y - m_spheres[i].info.w,
+					m_spheres[i].info.z - m_spheres[i].info.w,
+					m_spheres[i].info.x + m_spheres[i].info.w,
+					m_spheres[i].info.y + m_spheres[i].info.w,
+					m_spheres[i].info.z + m_spheres[i].info.w
+				};
+			}
 		}
 		AllocateUploadBuffer(device, m_aabbs.data(), m_aabbs.size() * sizeof(m_aabbs[0]), &m_aabbBuffer.resource);
 	}
@@ -779,10 +813,6 @@ void D3D12RaytracingSimpleLighting::BuildGeometry()
 	auto commandQueue = m_deviceResources->GetCommandQueue();
 	auto commandAllocator = m_deviceResources->GetCommandAllocator();
 
-// SHOW_CUBE is a hacky way to switch between loading the full sponza scene and the original cube model for quick testing (completely seperately compiled code to ensure
-// issues are or are not caused by code I added for Sponza).
-//#define SHOW_CUBE
-#ifndef SHOW_CUBE
 	m_sponza = std::make_shared<Shape>();
 
 	std::string resourcePath = "resources/";
@@ -797,7 +827,6 @@ void D3D12RaytracingSimpleLighting::BuildGeometry()
 
 	m_character->loadMesh(characterObj, &resourcePath);
 	m_character->resize();
-#endif
 
 	BuildProceduralGeometryAABBs();
 }
@@ -811,39 +840,6 @@ void D3D12RaytracingSimpleLighting::BuildGeometryDescsForBottomLevelAS(std::arra
 	D3D12_RAYTRACING_GEOMETRY_FLAGS geometryFlags = D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE;
 	D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;
 
-#ifdef SHOW_CUBE
-	// Triangle geometry desc
-	{
-		// Triangle bottom-level AS contains a single plane geometry.
-		geometryDescs[BottomLevelASType::Triangle].resize(1);
-
-		// Cube geometry
-		auto& geometryDesc = geometryDescs[BottomLevelASType::Triangle][0];
-		geometryDesc = {};
-		geometryDesc.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
-		geometryDesc.Triangles.IndexBuffer = m_cubeIndexBuffer.resource->GetGPUVirtualAddress();
-		geometryDesc.Triangles.IndexCount = static_cast<UINT>(m_cubeIndexBuffer.resource->GetDesc().Width) / sizeof(Index);
-		geometryDesc.Triangles.IndexFormat = DXGI_FORMAT_R32_UINT;
-		geometryDesc.Triangles.Transform3x4 = 0;
-		geometryDesc.Triangles.VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT;
-		geometryDesc.Triangles.VertexCount = static_cast<UINT>(m_cubeVertexBuffer.resource->GetDesc().Width) / sizeof(Vertex);
-		geometryDesc.Triangles.VertexBuffer.StartAddress = m_cubeVertexBuffer.resource->GetGPUVirtualAddress();
-		geometryDesc.Triangles.VertexBuffer.StrideInBytes = sizeof(Vertex);
-
-		// Mark the geometry as opaque. 
-		// PERFORMANCE TIP: mark geometry as opaque whenever applicable as it can enable important ray processing optimizations.
-		// Note: When rays encounter opaque geometry an any hit shader will not be executed whether it is present or not.
-		geometryDesc.Flags = D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE;
-
-		/*D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC bottomLevelBuildDesc = {};
-		D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS &bottomLevelInputs = bottomLevelBuildDesc.Inputs;
-		bottomLevelInputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
-		bottomLevelInputs.Flags = buildFlags;
-		bottomLevelInputs.NumDescs = 1;
-		bottomLevelInputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
-		bottomLevelInputs.pGeometryDescs = &geometryDesc;*/
-	}
-#else
 	// Triangle geometry desc
 	{
 		// Triangle bottom-level AS contains # of shapes in given object.
@@ -872,30 +868,32 @@ void D3D12RaytracingSimpleLighting::BuildGeometryDescsForBottomLevelAS(std::arra
 			//sponzaGeometryDescs.push_back(geometryDesc);
 		}
 
-		// Triangle bottom-level AS contains # of shapes in given object.
-		geometryDescs[BottomLevelASType::TriangleCharacter].resize(m_character->m_obj_count);
+		if (!m_sceneCB->showCharacterGISpheres) {
+			// Triangle bottom-level AS contains # of shapes in given object.
+			geometryDescs[BottomLevelASType::TriangleCharacter].resize(m_character->m_obj_count);
 
-		for (int i = 0; i < m_character->m_obj_count; i++)
-		{
-			auto& geometryDesc = geometryDescs[BottomLevelASType::TriangleCharacter][i];
-			geometryDesc = {};
+			for (int i = 0; i < m_character->m_obj_count; i++)
+			{
+				auto& geometryDesc = geometryDescs[BottomLevelASType::TriangleCharacter][i];
+				geometryDesc = {};
 
-			geometryDesc.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
-			geometryDesc.Triangles.IndexBuffer = m_character->m_indexBuffer[i].resource->GetGPUVirtualAddress();
-			geometryDesc.Triangles.IndexCount = static_cast<UINT>(m_character->m_indexBuffer[i].resource->GetDesc().Width) / sizeof(Index);
-			geometryDesc.Triangles.IndexFormat = DXGI_FORMAT_R32_UINT; // Needs to match struct Index !
-			geometryDesc.Triangles.Transform3x4 = 0;
-			geometryDesc.Triangles.VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT; // Needs to match struct Vertex !
-			geometryDesc.Triangles.VertexCount = static_cast<UINT>(m_character->m_vertexBuffer[i].resource->GetDesc().Width) / sizeof(Vertex);
-			geometryDesc.Triangles.VertexBuffer.StartAddress = m_character->m_vertexBuffer[i].resource->GetGPUVirtualAddress();
-			geometryDesc.Triangles.VertexBuffer.StrideInBytes = sizeof(Vertex);
+				geometryDesc.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
+				geometryDesc.Triangles.IndexBuffer = m_character->m_indexBuffer[i].resource->GetGPUVirtualAddress();
+				geometryDesc.Triangles.IndexCount = static_cast<UINT>(m_character->m_indexBuffer[i].resource->GetDesc().Width) / sizeof(Index);
+				geometryDesc.Triangles.IndexFormat = DXGI_FORMAT_R32_UINT; // Needs to match struct Index !
+				geometryDesc.Triangles.Transform3x4 = 0;
+				geometryDesc.Triangles.VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT; // Needs to match struct Vertex !
+				geometryDesc.Triangles.VertexCount = static_cast<UINT>(m_character->m_vertexBuffer[i].resource->GetDesc().Width) / sizeof(Vertex);
+				geometryDesc.Triangles.VertexBuffer.StartAddress = m_character->m_vertexBuffer[i].resource->GetGPUVirtualAddress();
+				geometryDesc.Triangles.VertexBuffer.StrideInBytes = sizeof(Vertex);
 
-			// Mark the geometry as opaque. 
-			// PERFORMANCE TIP: mark geometry as opaque whenever applicable as it can enable important ray processing optimizations.
-			// Note: When rays encounter opaque geometry an any hit shader will not be executed whether it is present or not.
-			geometryDesc.Flags = D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE;
+				// Mark the geometry as opaque. 
+				// PERFORMANCE TIP: mark geometry as opaque whenever applicable as it can enable important ray processing optimizations.
+				// Note: When rays encounter opaque geometry an any hit shader will not be executed whether it is present or not.
+				geometryDesc.Flags = D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE;
 
-			//sponzaGeometryDescs.push_back(geometryDesc);
+				//sponzaGeometryDescs.push_back(geometryDesc);
+			}
 		}
 
 		/*D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC bottomLevelBuildDesc = {};
@@ -906,9 +904,9 @@ void D3D12RaytracingSimpleLighting::BuildGeometryDescsForBottomLevelAS(std::arra
 		bottomLevelInputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
 		bottomLevelInputs.pGeometryDescs = geometryDescs[BottomLevelASType::Triangle].data();*/
 	}
-#endif
 
 	// AABB geometry desc
+	if (m_sceneCB->showCharacterGISpheres)
 	{
 		D3D12_RAYTRACING_GEOMETRY_DESC aabbDescTemplate = {};
 		aabbDescTemplate.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_PROCEDURAL_PRIMITIVE_AABBS;
@@ -1042,6 +1040,9 @@ void D3D12RaytracingSimpleLighting::BuildBotomLevelASInstanceDescs(BLASPtrType *
 		XMStoreFloat3x4(reinterpret_cast<XMFLOAT3X4*>(instanceDesc.Transform), mTransform);
 	}
 
+	// Calculate transformation matrix.
+	const XMVECTOR vBasePosition = vWidth * XMLoadFloat3(&XMFLOAT3(1.0f, -0.6025f, -0.15f));
+
 	// Bottom-level AS for a character model.
 	{
 		auto& instanceDesc = instanceDescs[BottomLevelASType::TriangleCharacter];
@@ -1050,9 +1051,6 @@ void D3D12RaytracingSimpleLighting::BuildBotomLevelASInstanceDescs(BLASPtrType *
 		instanceDesc.InstanceContributionToHitGroupIndex = m_sponza->m_obj_count * RayType::Count;
 		instanceDesc.AccelerationStructure = bottomLevelASaddresses[BottomLevelASType::TriangleCharacter];
 		//instanceDesc.Transform[0][0] = instanceDesc.Transform[1][1] = instanceDesc.Transform[2][2] = 1;
-
-		// Calculate transformation matrix.
-		const XMVECTOR vBasePosition = vWidth * XMLoadFloat3(&XMFLOAT3(1.0f, -0.6025f, -0.15f));
 
 		// Scale in XZ dimensions.
 		XMMATRIX mScale = XMMatrixScaling(0.1f, 0.1f, 0.1f);
@@ -1071,7 +1069,13 @@ void D3D12RaytracingSimpleLighting::BuildBotomLevelASInstanceDescs(BLASPtrType *
 		// Set hit group offset to beyond the shader records for the triangle AABB.
 		instanceDesc.InstanceContributionToHitGroupIndex = /*BottomLevelASType::AABB **/ (m_sponza->m_obj_count + m_character->m_obj_count) * RayType::Count; //change if shadow rays, etc introduced.
 		instanceDesc.AccelerationStructure = bottomLevelASaddresses[BottomLevelASType::AABB];
-		instanceDesc.Transform[0][0] = instanceDesc.Transform[1][1] = instanceDesc.Transform[2][2] = 1;
+		//instanceDesc.Transform[0][0] = instanceDesc.Transform[1][1] = instanceDesc.Transform[2][2] = 1;
+
+		// Scale in XZ dimensions.
+		XMMATRIX mScale = XMMatrixScaling(0.175f, 0.175f, 0.175f);
+		XMMATRIX mTranslation = XMMatrixTranslationFromVector(vBasePosition);
+		XMMATRIX mTransform = mScale * mTranslation;
+		XMStoreFloat3x4(reinterpret_cast<XMFLOAT3X4*>(instanceDesc.Transform), mTransform);
 
 		// Move all AABBS above the ground plane.
 		//XMMATRIX mTranslation = XMMatrixTranslationFromVector(XMLoadFloat3(&XMFLOAT3(0, c_aabbWidth / 2, 0)));
@@ -1214,11 +1218,8 @@ void D3D12RaytracingSimpleLighting::CreateDescriptorHeap()
     // 1 - raytracing output texture SRV
     // 3 - 2 bottom and 1 top level acceleration structure fallback wrapped pointer UAVs
 	// 1 - texture for sphere
-#ifdef SHOW_CUBE
-	UINT numGeometry = 1;
-#else
 	UINT numGeometry = m_sponza->m_obj_count + m_character->m_obj_count;
-#endif
+
 	descriptorHeapDesc.NumDescriptors = numGeometry * 3 + 1 + 3 + 1;
     descriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     descriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
@@ -1230,17 +1231,6 @@ void D3D12RaytracingSimpleLighting::CreateDescriptorHeap()
 
 	// Vertex buffer is passed to the shader along with index buffer as a descriptor table.
 	// Vertex buffer descriptor must follow index buffer descriptor in the descriptor heap.
-#ifdef SHOW_CUBE
-
-	AllocateUploadBuffer(device, m_cubeIndices, sizeof(m_cubeIndices), &m_cubeIndexBuffer.resource);
-	AllocateUploadBuffer(device, m_cubeVertices, sizeof(m_cubeVertices), &m_cubeVertexBuffer.resource);
-
-	UINT descriptorIndexIB = CreateBufferSRV(&m_cubeIndexBuffer, ARRAYSIZE(m_cubeIndices), sizeof(m_cubeIndices[0]));
-	UINT descriptorIndexVB = CreateBufferSRV(&m_cubeVertexBuffer, ARRAYSIZE(m_cubeVertices), sizeof(m_cubeVertices[0]));
-	ThrowIfFalse(descriptorIndexVB == descriptorIndexIB + 1, L"Vertex Buffer descriptor index must follow that of Index Buffer descriptor index!");
-
-	m_geometryDescriptorIndex = descriptorIndexIB;
-#else
 	// Build resources for rendering Sponza geometry.
 	commandList->Reset(commandAllocator, nullptr);
 
@@ -1274,7 +1264,6 @@ void D3D12RaytracingSimpleLighting::CreateDescriptorHeap()
 	// Clean-up upload buffers.
 	m_sponza->finalizeInit();
 	m_character->finalizeInit();
-#endif
 }
 
 // Build acceleration structures needed for raytracing.
@@ -1418,13 +1407,10 @@ void D3D12RaytracingSimpleLighting::BuildShaderTables()
 			D3D12_GPU_DESCRIPTOR_HANDLE diffuseTexture;
 		} aabbRootArguments;
 
-#ifdef SHOW_CUBE
-		UINT numTriangleShaderRecords = 1;
-#else
 		UINT numSponzaTriangleShaderRecords = m_sponza->m_obj_count;
 		UINT numCharacterTriangleShaderRecords = m_character->m_obj_count;
-#endif
-		UINT numAABBShaderRecords = 1; // Only 1 sphere right now.
+
+		UINT numAABBShaderRecords = m_numSpheres; // Only 1 sphere right now.
 
 		UINT numShaderRecords = (numSponzaTriangleShaderRecords + numCharacterTriangleShaderRecords + numAABBShaderRecords) * RayType::Count;
 
@@ -1433,17 +1419,10 @@ void D3D12RaytracingSimpleLighting::BuildShaderTables()
 
 		// Triangle Hit group shader table for Sponza scene.
 		{
-#ifdef SHOW_CUBE
 			sponzaTriangleRootArguments.cb = m_cubeCB;
-#else
-			sponzaTriangleRootArguments.cb = m_cubeCB;
-#endif
+
 			for (UINT i = 0; i < numSponzaTriangleShaderRecords; i++)
 			{
-#ifdef SHOW_CUBE
-				triangleRootArguments.indexBufferGPUHandle = m_cubeIndexBuffer.gpuDescriptorHandle;
-				triangleRootArguments.vertexBufferGPUHandle = m_cubeVertexBuffer.gpuDescriptorHandle;
-#else
 				sponzaTriangleRootArguments.indexBufferGPUHandle = m_sponza->m_indexBuffer[i].gpuDescriptorHandle;
 				sponzaTriangleRootArguments.vertexBufferGPUHandle = m_sponza->m_vertexBuffer[i].gpuDescriptorHandle;
 
@@ -1452,7 +1431,6 @@ void D3D12RaytracingSimpleLighting::BuildShaderTables()
 
 				// Attach normal texture.
 				sponzaTriangleRootArguments.cb.useNormalTexture = m_sponza->GetNormalTextureGPUHandle(sponzaTriangleRootArguments.normalTextureGPUHandle, i) ? 1 : 0;
-#endif
 				//hitGroupShaderTable.push_back(ShaderRecord(hitGroupShaderIdentifier, shaderIdentifierSize, &triangleRootArguments, sizeof(triangleRootArguments)));
 				for (auto& hitGroupShaderID : hitGroupShaderIDs_TriangleGeometry)
 				{
@@ -1488,7 +1466,7 @@ void D3D12RaytracingSimpleLighting::BuildShaderTables()
 			// Create a shader record for each primitive.
 			for (UINT i = 0; i < numAABBShaderRecords; i++)
 			{
-				aabbRootArguments.sphereConstant = m_sphere;
+				aabbRootArguments.sphereConstant = m_spheres[i];
 				aabbRootArguments.diffuseTexture = m_sphereTexture->gpuHandle;
 
 				for (auto& hitGroupShaderID : hitGroupShaderIDs_AABBGeometry)
@@ -1638,6 +1616,19 @@ void D3D12RaytracingSimpleLighting::OnUpdate()
 			numGISamples = min(numGISamples + 1, 64);
 		}
 		m_sceneCB[frameIndex].numGISamples = numGISamples;
+
+		static bool showCharacterGISpheres = false;
+		if (GetKeyState('V') & 0x8000)
+		{
+			showCharacterGISpheres = true;
+			BuildAccelerationStructures();
+		}
+		if (GetKeyState('B') & 0x8000)
+		{
+			showCharacterGISpheres = false;
+			BuildAccelerationStructures();
+		}
+		m_sceneCB[frameIndex].showCharacterGISpheres = showCharacterGISpheres;
 	}
 }
 
@@ -1687,12 +1678,7 @@ void D3D12RaytracingSimpleLighting::DoRaytracing()
     auto SetCommonPipelineState = [&](auto* descriptorSetCommandList)
     {
         descriptorSetCommandList->SetDescriptorHeaps(1, m_descriptorHeap.GetAddressOf());
-        // Set index and successive vertex buffer decriptor tables
-//#ifdef SHOW_CUBE
-//        commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::VertexBuffersSlot, m_cubeIndexBuffer.gpuDescriptorHandle);
-//#else
-//		commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::VertexBuffersSlot, m_sponza->m_indexBuffer[0].gpuDescriptorHandle);
-//#endif
+
 		commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputViewSlot, m_raytracingOutputResourceUAVGpuDescriptor);
 		//commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::DiffuseTextureSlot, m_sphereDiffuseTextureResourceGpuDescriptor);
     };

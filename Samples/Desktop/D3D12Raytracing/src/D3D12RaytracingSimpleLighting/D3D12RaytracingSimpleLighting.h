@@ -135,7 +135,8 @@ private:
     D3DBuffer m_cubeVertexBuffer;
 	std::shared_ptr<Shape> m_sponza;
 	std::shared_ptr<Shape> m_character;
-	Sphere m_sphere;
+	std::vector <Sphere> m_spheres;
+	UINT m_numSpheres;
 	std::shared_ptr<Texture> m_sphereTexture;
 
 	UINT m_geometryDescriptorIndex;

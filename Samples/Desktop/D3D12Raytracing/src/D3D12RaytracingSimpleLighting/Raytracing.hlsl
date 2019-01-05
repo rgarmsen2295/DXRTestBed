@@ -295,6 +295,47 @@ float3 normalSampleToWorldSpace(float3 normalMapSample, float3 normalInWorld, fl
     return -normalMapSampleInWorld;
 }
 
+float4 calculateDiffuseGI(in RayPayload payload, in float3 hitPosition, in float3 normal)
+{
+    float4 diffuseGIColor = float4(0.0, 0.0, 0.0, 0.0);
+
+    int numGIRays = g_sceneCB.numGISamples;
+    int numGIRaysHit = 0;
+            
+    // based parially from source provided at: https://www.scratchapixel.com/code.php?id=34&origin=/lessons/3d-basic-rendering/global-illumination-path-tracing
+    float3 Nt, Nb;
+    createCoordinateSystem(normal, Nt, Nb); 
+    float pdf = 1 / (2 * PI); 
+    for (int i = 0; i < numGIRays; i++)
+    {
+        float2 u = float2(float(rand_xorshift()) * (1.0 / 4294967296.0), float(rand_xorshift()) * (1.0 / 4294967296.0)); //InterleavedGradientNoise((hitPosition.xy + i) / numGIRays);
+        //diffuseGIColor.rg = u;
+        //break;
+        float3 dir;
+        dir = SampleDisk(u.x, u.y/*, dir.x, dir.y*/);
+
+        float3 dirInWorld = float3(
+            dir.x * Nb.x + dir.y * normal.x + dir.z * Nt.x,
+            dir.x * Nb.y + dir.y * normal.y + dir.z * Nt.y,
+            dir.x * Nb.z + dir.y * normal.z + dir.z * Nt.z);
+        dirInWorld = normalize(dirInWorld);
+
+        // Set up and trace GI ray.
+        Ray giRay = { hitPosition, dirInWorld };
+        RayPayload giPayload = TraceGIRay(giRay, payload.recursionDepth);
+
+        if (!giPayload.isMiss)
+        {
+            diffuseGIColor += giPayload.color * u.x / pdf;
+            numGIRaysHit++;
+        }
+    }
+        
+    diffuseGIColor /= max(numGIRaysHit, 1);
+
+    return diffuseGIColor;
+}
+
 [shader("closesthit")]
 void TriangleClosestHitShader(inout RayPayload payload, in TriangleAttributes attr)
 {
@@ -390,64 +431,13 @@ void TriangleClosestHitShader(inout RayPayload payload, in TriangleAttributes at
     float4 diffuseGIColor = float4(0.0, 0.0, 0.0, 0.0);
     if (payload.recursionDepth < 2 && g_sceneCB.useGlobalIllumination)
     {
-        int numGIRays = g_sceneCB.numGISamples;
-        int numGIRaysHit = 0;
-            
-        // based parially from source provided at: https://www.scratchapixel.com/code.php?id=34&origin=/lessons/3d-basic-rendering/global-illumination-path-tracing
-        float3 Nt, Nb;
-        createCoordinateSystem(triangleNormal, Nt, Nb); 
-        float pdf = 1 / (2 * PI); 
-        for (int i = 0; i < numGIRays; i++)
-        {
-            float2 u = float2(float(rand_xorshift()) * (1.0 / 4294967296.0), float(rand_xorshift()) * (1.0 / 4294967296.0)); //InterleavedGradientNoise((hitPosition.xy + i) / numGIRays);
-            //diffuseGIColor.rg = u;
-            //break;
-            float3 dir;
-            dir = SampleDisk(u.x, u.y/*, dir.x, dir.y*/);
-
-            float3 dirInWorld = float3(
-                dir.x * Nb.x + dir.y * triangleNormal.x + dir.z * Nt.x,
-                dir.x * Nb.y + dir.y * triangleNormal.y + dir.z * Nt.y,
-                dir.x * Nb.z + dir.y * triangleNormal.z + dir.z * Nt.z);
-            dirInWorld = normalize(dirInWorld);
-
-            //dir.z = sqrt(max(0.0, 1.0 - pow(dir.x, 2) - pow(dir.y, 2)));
-            //dir = normalize(dir);
-            ////dir.y = -dir.y;
-            
-            //float3 zAxis = normalize(float3(0.0, 0.0, dir.z));
-
-            //float zNormalDot = dot(triangleNormal, zAxis);
-            //float3 zCrossNormalAxis = cross(triangleNormal, zAxis);
-            //if (zNormalDot < 0.0f)
-            //{
-            //    zNormalDot = dot(-triangleNormal, zAxis);
-            //    zCrossNormalAxis = cross(-triangleNormal, zAxis);
-            //}
-            //float rotAngle = acos(zNormalDot);
-            
-            //matrix rotation = RotationMatrix(zCrossNormalAxis, rotAngle);
-
-            //float3 monteDir = normalize(mul(float4(dir, 0.0), rotation));
-
-            //Ray giRay = { hitPosition + (0.01 * monteDir), monteDir };
-            Ray giRay = { hitPosition /*+ (0.01 * dirInWorld)*/, dirInWorld };
-            RayPayload giPayload = TraceGIRay(giRay, payload.recursionDepth);
-
-            if (!giPayload.isMiss)
-            {
-                diffuseGIColor += giPayload.color * u.x / pdf;
-                numGIRaysHit++;
-            }
-        }
-        
-        diffuseGIColor /= max(numGIRaysHit, 1);
+        diffuseGIColor = calculateDiffuseGI(payload, hitPosition, triangleNormal);
     }
     else
     {
         // Use basic ambient "guess" if we're past the max ray depth.
         //diffuseGIColor = 0.0;//g_sceneCB.lightAmbientColor * (payload.recursionDepth > 1 ? 0.2 : 1.0);
-        diffuseGIColor = g_sceneCB.lightAmbientColor * (payload.recursionDepth > 1 ? 1.0 : 1.0);
+        diffuseGIColor = g_sceneCB.lightAmbientColor * (payload.recursionDepth > 1 ? 0.0 : 1.0);
     }
 
     //float4 color = g_sceneCB.lightAmbientColor * diffuseTextureColor + diffuseColor * diffuseTextureColor * shadowRayHit;
