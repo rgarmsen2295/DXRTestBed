@@ -169,7 +169,7 @@ bool TraceShadowRayAndReportIfHit(in Ray ray, UINT currentRayRecursionDepth)
     rayDesc.Direction = ray.direction;
     // Set TMin to a zero value to avoid aliasing artifcats along contact areas.
     // Note: make sure to enable back-face culling so as to avoid surface face fighting.
-    rayDesc.TMin = 0.1;
+    rayDesc.TMin = 0.01;
     rayDesc.TMax = 10000;
 
     // Initialize shadow ray payload.
@@ -201,7 +201,7 @@ RayPayload TraceGIRay(in Ray ray, UINT currentRayRecursionDepth)
     rayDesc.Direction = ray.direction;
     // Set TMin to a zero value to avoid aliasing artifcats along contact areas.
     // Note: make sure to enable back-face culling so as to avoid surface face fighting.
-    rayDesc.TMin = 0.1;
+    rayDesc.TMin = 0.01;
     rayDesc.TMax = 1.0;//000; //0.5
 
     // Initialize shadow ray payload.
@@ -406,7 +406,7 @@ void TriangleClosestHitShader(inout RayPayload payload, in TriangleAttributes at
     // Shadow component.
     // Trace a shadow ray.
     float3 shadowDir = normalize(g_sceneCB.lightPosition.xyz - hitPosition);
-    Ray shadowRay = { hitPosition /*+ (0.01 * shadowDir)*/, shadowDir };
+    Ray shadowRay = { hitPosition, shadowDir };
     float shadowRayHit = TraceShadowRayAndReportIfHit(shadowRay, payload.recursionDepth + 1) ? 0.0 : 1.0;
 
     float4 diffuseColor = CalculateDiffuseLighting(hitPosition, triangleNormal);
@@ -445,7 +445,7 @@ void TriangleClosestHitShader(inout RayPayload payload, in TriangleAttributes at
     float4 color = (diffuseGIColor * diffuseTextureColor) + (diffuseColor * diffuseTextureColor * shadowRayHit);
     color.a = alpha;
 
-        //color.rgb = triangleNormal;
+    //color.rgb = triangleNormal;
 
     payload.color = color;
 }
@@ -479,7 +479,7 @@ float4 GetSphereTextureColor(in float3 hitPosition, in float3 normal)
 void AABBClosestHitShader(inout RayPayload payload, in ProceduralPrimitiveAttributes attr)
 {
     float3 hitPosition = HitWorldPosition();
-    float4 textureColor = GetSphereTextureColor(hitPosition, attr.normal);
+    float4 diffuseTextureColor = GetSphereTextureColor(hitPosition, attr.normal);
 
     // Shadow component.
     // Trace a shadow ray.
@@ -487,7 +487,24 @@ void AABBClosestHitShader(inout RayPayload payload, in ProceduralPrimitiveAttrib
     Ray shadowRay = { hitPosition /*+ (0.01 * shadowDir)*/, shadowDir };
     float shadowRayHit = TraceShadowRayAndReportIfHit(shadowRay, payload.recursionDepth) ? 0.0 : 1.0;
 
-    payload.color = textureColor * g_sceneCB.lightAmbientColor + textureColor * CalculateDiffuseLighting(HitWorldPosition(), attr.normal) * shadowRayHit;
+    float4 diffuseColor = CalculateDiffuseLighting(hitPosition, attr.normal);
+
+    // Calculate diffuse GI.
+    float4 diffuseGIColor = float4(0.0, 0.0, 0.0, 0.0);
+    if (payload.recursionDepth < 2 && g_sceneCB.useGlobalIllumination)
+    {
+        diffuseGIColor = calculateDiffuseGI(payload, hitPosition, attr.normal);
+    }
+    else
+    {
+        // Use basic ambient "guess" if we're past the max ray depth.
+        //diffuseGIColor = 0.0;//g_sceneCB.lightAmbientColor * (payload.recursionDepth > 1 ? 0.2 : 1.0);
+        diffuseGIColor = g_sceneCB.lightAmbientColor * (payload.recursionDepth > 1 ? 0.0 : 1.0);
+    }
+
+    //payload.color = diffuseTextureColor * g_sceneCB.lightAmbientColor + textureColor * diffuseColor * shadowRayHit;
+    float4 color = (diffuseGIColor * diffuseTextureColor) + (diffuseColor * diffuseTextureColor * shadowRayHit);
+    payload.color = color;
     payload.color.a = 1.0;
 
 }

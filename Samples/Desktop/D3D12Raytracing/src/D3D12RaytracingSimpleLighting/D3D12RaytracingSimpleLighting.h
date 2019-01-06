@@ -141,6 +141,8 @@ private:
 
 	UINT m_geometryDescriptorIndex;
 
+	XMVECTOR m_characterPosition;
+
 	// Cube indices.
 	Index m_cubeIndices[36] =
 	{
@@ -237,7 +239,13 @@ private:
 
 	// Acceleration structure
 	ComPtr<ID3D12Resource> m_bottomLevelAS[BottomLevelASType::Count];
+	//AccelerationStructureBuffers m_topLevelAS;//ComPtr<ID3D12Resource> m_topLevelAS;
 	ComPtr<ID3D12Resource> m_topLevelAS;
+	ComPtr<ID3D12Resource> m_topLevelScratch;
+	ComPtr<ID3D12Resource> m_instanceDescsResource;
+
+	//std::vector<D3D12_RAYTRACING_INSTANCE_DESC> m_instanceDescs;
+	D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC m_topLevelBuildDesc;
 
     // Raytracing output
     ComPtr<ID3D12Resource> m_raytracingOutput;
@@ -303,10 +311,11 @@ private:
     void BuildGeometry();
 	void BuildGeometryDescsForBottomLevelAS(std::array<std::vector<D3D12_RAYTRACING_GEOMETRY_DESC>, BottomLevelASType::Count>& geometryDescs);
 	AccelerationStructureBuffers BuildBottomLevelAS(const std::vector<D3D12_RAYTRACING_GEOMETRY_DESC>& geometryDescs, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE);
-	template <class InstanceDescType, class BLASPtrType>
-	void BuildBotomLevelASInstanceDescs(BLASPtrType *bottomLevelASaddresses, ComPtr<ID3D12Resource>* instanceDescsResource);
-	AccelerationStructureBuffers BuildTopLevelAS(AccelerationStructureBuffers bottomLevelAS[BottomLevelASType::Count], D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE);
-	void BuildAccelerationStructures();
+	template <class BLASPtrType>
+	ComPtr<ID3D12Resource> BuildBotomLevelASInstanceDescs(BLASPtrType *bottomLevelASaddresses, ComPtr<ID3D12Resource> instanceDescsResource, bool isUpdate = false);
+	AccelerationStructureBuffers BuildTopLevelAS(AccelerationStructureBuffers bottomLevelAS[BottomLevelASType::Count], D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE, bool isUpdate = false);
+	void UpdateCharacter(float deltaTime);
+	void BuildAccelerationStructures(bool isUpdate);
     void BuildShaderTables();
     void SelectRaytracingAPI(RaytracingAPI type);
     void UpdateForSizeChange(UINT clientWidth, UINT clientHeight);
