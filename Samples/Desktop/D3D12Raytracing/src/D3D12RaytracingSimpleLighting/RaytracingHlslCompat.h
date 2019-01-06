@@ -48,7 +48,8 @@ struct SceneConstantBuffer
 	UINT	 useGlobalIllumination;
 	UINT	 useNormalTexturing;
 	UINT	 numGISamples;
-	UINT	 showCharacterGISpheres;
+	UINT	 useCharacterSpheresForPrimary;
+	UINT	 useCharacterMeshForGI;
 };
 
 struct CubeConstantBuffer

@@ -143,15 +143,30 @@ void MyRaygenShader()
     ray.TMin = 0.001;
     ray.TMax = 10000.0;
     RayPayload payload = { float4(0, 0, 0, 0), 1, false };
-    TraceRay(Scene,
-		RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
-		TraceRayParameters::InstanceMask,
-        TraceRayParameters::HitGroup::Offset[RayType::Radiance],
-        TraceRayParameters::HitGroup::GeometryStride,
-        TraceRayParameters::MissShader::Offset[RayType::Radiance],
-        ray,
-        payload
-    );
+    if (g_sceneCB.useCharacterSpheresForPrimary)
+    {
+        TraceRay(GIScene,
+		    RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
+		    TraceRayParameters::InstanceMask,
+            TraceRayParameters::HitGroup::Offset[RayType::Radiance],
+            TraceRayParameters::HitGroup::GeometryStride,
+            TraceRayParameters::MissShader::Offset[RayType::Radiance],
+            ray,
+            payload
+        );
+    }
+    else
+    {
+        TraceRay(Scene,
+		    RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
+		    TraceRayParameters::InstanceMask,
+            TraceRayParameters::HitGroup::Offset[RayType::Radiance],
+            TraceRayParameters::HitGroup::GeometryStride,
+            TraceRayParameters::MissShader::Offset[RayType::Radiance],
+            ray,
+            payload
+        );
+    }
     
     RenderTarget[DispatchRaysIndex().xy] = payload.color;
 }
@@ -177,19 +192,37 @@ bool TraceShadowRayAndReportIfHit(in Ray ray, UINT currentRayRecursionDepth)
     // Set the initial value to true since closest and any hit shaders are skipped. 
     // Shadow miss shader, if called, will set it to false.
     ShadowRayPayload shadowPayload = { true };
-    TraceRay(Scene,
-        RAY_FLAG_CULL_BACK_FACING_TRIANGLES
-        | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH
-        | RAY_FLAG_FORCE_OPAQUE // ~skip any hit shaders
-        | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER, // ~skip closest hit shaders,
-        TraceRayParameters::InstanceMask,
-        TraceRayParameters::HitGroup::Offset[RayType::Shadow],
-        TraceRayParameters::HitGroup::GeometryStride,
-        TraceRayParameters::MissShader::Offset[RayType::Shadow],
-        rayDesc,
-        shadowPayload
-    );
-
+    if (g_sceneCB.useCharacterSpheresForPrimary)
+    {
+        TraceRay(GIScene,
+            RAY_FLAG_CULL_BACK_FACING_TRIANGLES
+            | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH
+            | RAY_FLAG_FORCE_OPAQUE // ~skip any hit shaders
+            | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER, // ~skip closest hit shaders,
+            TraceRayParameters::InstanceMask,
+            TraceRayParameters::HitGroup::Offset[RayType::Shadow],
+            TraceRayParameters::HitGroup::GeometryStride,
+            TraceRayParameters::MissShader::Offset[RayType::Shadow],
+            rayDesc,
+            shadowPayload
+        );
+    }
+    else
+    {
+        TraceRay(Scene,
+            RAY_FLAG_CULL_BACK_FACING_TRIANGLES
+            | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH
+            | RAY_FLAG_FORCE_OPAQUE // ~skip any hit shaders
+            | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER, // ~skip closest hit shaders,
+            TraceRayParameters::InstanceMask,
+            TraceRayParameters::HitGroup::Offset[RayType::Shadow],
+            TraceRayParameters::HitGroup::GeometryStride,
+            TraceRayParameters::MissShader::Offset[RayType::Shadow],
+            rayDesc,
+            shadowPayload
+        );
+    }
+    
     return shadowPayload.hit;
 }
 
@@ -209,15 +242,30 @@ RayPayload TraceGIRay(in Ray ray, UINT currentRayRecursionDepth)
     // Set the initial value to true since closest and any hit shaders are skipped. 
     // Shadow miss shader, if called, will set it to false.
     RayPayload giPayload = { float4(0, 0, 0, 0), currentRayRecursionDepth + 1, false };
-    TraceRay(GIScene,
-		RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
-		TraceRayParameters::InstanceMask,
-        TraceRayParameters::HitGroup::Offset[RayType::Radiance],
-        TraceRayParameters::HitGroup::GeometryStride,
-        TraceRayParameters::MissShader::Offset[RayType::Radiance],
-        rayDesc,
-        giPayload
-    );
+    if (g_sceneCB.useCharacterMeshForGI)
+    {
+        TraceRay(Scene,
+		    RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
+		    TraceRayParameters::InstanceMask,
+            TraceRayParameters::HitGroup::Offset[RayType::Radiance],
+            TraceRayParameters::HitGroup::GeometryStride,
+            TraceRayParameters::MissShader::Offset[RayType::Radiance],
+            rayDesc,
+            giPayload
+        );
+    }
+    else
+    {
+        TraceRay(GIScene,
+		    RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
+		    TraceRayParameters::InstanceMask,
+            TraceRayParameters::HitGroup::Offset[RayType::Radiance],
+            TraceRayParameters::HitGroup::GeometryStride,
+            TraceRayParameters::MissShader::Offset[RayType::Radiance],
+            rayDesc,
+            giPayload
+        );
+    }
 
     return giPayload;
 }

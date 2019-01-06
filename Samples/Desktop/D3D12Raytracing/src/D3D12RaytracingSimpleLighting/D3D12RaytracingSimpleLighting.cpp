@@ -174,7 +174,8 @@ void D3D12RaytracingSimpleLighting::InitializeScene()
 
 		m_sceneCB[frameIndex].numGISamples = 2;
 
-		m_sceneCB[frameIndex].showCharacterGISpheres = false;
+		m_sceneCB[frameIndex].useCharacterSpheresForPrimary = false;
+		m_sceneCB[frameIndex].useCharacterMeshForGI = false;
     }
 
     // Apply the initial values to all frames' buffer instances.
@@ -1059,7 +1060,7 @@ ComPtr<ID3D12Resource> D3D12RaytracingSimpleLighting::BuildBotomLevelASInstanceD
 	// Instances share all the data, except for a transform.
 	if (isGI)
 	{
-		auto& instanceDesc = instanceDescs[0/*BottomLevelASType::AABB*/];
+		auto& instanceDesc = instanceDescs[1/*BottomLevelASType::AABB*/];
 		instanceDesc = {};
 		instanceDesc.InstanceMask = 1;
 
@@ -1457,7 +1458,7 @@ void D3D12RaytracingSimpleLighting::UpdateCharacter(float deltaTime)
 	{
 		movementDirection = 1;
 	}
-	newCharacterPosition.z += 0.001 * movementDirection;
+	newCharacterPosition.z += deltaTime * movementDirection * 0.1;
 
 	m_characterPosition = XMLoadFloat3(&newCharacterPosition);
 
@@ -1923,22 +1924,35 @@ void D3D12RaytracingSimpleLighting::OnUpdate()
 		}
 		if (GetKeyState('P') & 0x8000)
 		{
-			numGISamples = min(numGISamples + 1, 64);
+			numGISamples = min(numGISamples + 1, 256);
 		}
 		m_sceneCB[frameIndex].numGISamples = numGISamples;
 
-		static bool showCharacterGISpheres = false;
+		static bool useCharacterSpheresForPrimary = false;
 		if (GetKeyState('V') & 0x8000)
 		{
-			showCharacterGISpheres = true;
-			BuildAccelerationStructures(/* isUpdate */ false);
+			useCharacterSpheresForPrimary = true;
+			//BuildAccelerationStructures(/* isUpdate */ false);
 		}
 		if (GetKeyState('B') & 0x8000)
 		{
-			showCharacterGISpheres = false;
-			BuildAccelerationStructures(/* isUpdate */ false);
+			useCharacterSpheresForPrimary = false;
+			//BuildAccelerationStructures(/* isUpdate */ false);
 		}
-		m_sceneCB[frameIndex].showCharacterGISpheres = showCharacterGISpheres;
+		m_sceneCB[frameIndex].useCharacterSpheresForPrimary = useCharacterSpheresForPrimary;
+
+		static bool useCharacterMeshForGI = false;
+		if (GetKeyState('X') & 0x8000)
+		{
+			useCharacterMeshForGI = true;
+			//BuildAccelerationStructures(/* isUpdate */ false);
+		}
+		if (GetKeyState('C') & 0x8000)
+		{
+			useCharacterMeshForGI = false;
+			//BuildAccelerationStructures(/* isUpdate */ false);
+		}
+		m_sceneCB[frameIndex].useCharacterMeshForGI = useCharacterMeshForGI;
 	}
 
 	UpdateCharacter(elapsedTime);
