@@ -27,6 +27,7 @@ static const float PI = 3.14159265f;
 
 // Global Resources
 RaytracingAccelerationStructure Scene : register(t0, space0);
+RaytracingAccelerationStructure GIScene : register(t1, space0);
 RWTexture2D<float4> RenderTarget : register(u0);
 //ByteAddressBuffer Indices : register(t1, space0);
 SamplerState g_sampler : register(s0, space0);
@@ -34,14 +35,14 @@ ConstantBuffer<SceneConstantBuffer> g_sceneCB : register(b0);
 
 // Triangle Local Resources
 ConstantBuffer<CubeConstantBuffer> l_cubeCB : register(b1);
-StructuredBuffer<Index> Indices : register(t1, space0);
-StructuredBuffer<Vertex> Vertices : register(t2, space0);
-Texture2D<float4> l_triangleDiffuseTex : register(t3, space0);
-Texture2D<float4> l_triangleNormalTex : register(t4, space0);
+StructuredBuffer<Index> Indices : register(t2, space0);
+StructuredBuffer<Vertex> Vertices : register(t3, space0);
+Texture2D<float4> l_triangleDiffuseTex : register(t4, space0);
+Texture2D<float4> l_triangleNormalTex : register(t5, space0);
 
 // Sphere Local Resources
 ConstantBuffer<Sphere> l_sphereCB : register(b2);
-Texture2D<float4> l_sphereDiffuseTex : register(t5, space0);
+Texture2D<float4> l_sphereDiffuseTex : register(t6, space0);
 
 typedef BuiltInTriangleIntersectionAttributes TriangleAttributes;
 
@@ -208,7 +209,7 @@ RayPayload TraceGIRay(in Ray ray, UINT currentRayRecursionDepth)
     // Set the initial value to true since closest and any hit shaders are skipped. 
     // Shadow miss shader, if called, will set it to false.
     RayPayload giPayload = { float4(0, 0, 0, 0), currentRayRecursionDepth + 1, false };
-    TraceRay(Scene,
+    TraceRay(GIScene,
 		RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
 		TraceRayParameters::InstanceMask,
         TraceRayParameters::HitGroup::Offset[RayType::Radiance],

@@ -503,11 +503,11 @@ void D3D12RaytracingSimpleLighting::CreateRootSignatures()
     {
         CD3DX12_DESCRIPTOR_RANGE ranges[2];
         ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
-		//ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);  // Single global sphere texture.
 
         CD3DX12_ROOT_PARAMETER rootParameters[GlobalRootSignatureParams::Count];
         rootParameters[GlobalRootSignatureParams::OutputViewSlot].InitAsDescriptorTable(1, &ranges[0]);
         rootParameters[GlobalRootSignatureParams::AccelerationStructureSlot].InitAsShaderResourceView(0);
+		rootParameters[GlobalRootSignatureParams::GIAccelerationStructureSlot].InitAsShaderResourceView(1);
         rootParameters[GlobalRootSignatureParams::SceneConstantSlot].InitAsConstantBufferView(0);
 		//rootParameters[GlobalRootSignatureParams::DiffuseTextureSlot].InitAsDescriptorTable(1, &ranges[1]);
 
@@ -519,10 +519,10 @@ void D3D12RaytracingSimpleLighting::CreateRootSignatures()
     // This is a root signature that enables a shader to have unique arguments that come from shader tables.
     {
 		CD3DX12_DESCRIPTOR_RANGE ranges[4]; // Perfomance TIP: Order from most frequent to least frequent.
-		ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // 2 static index and vertex buffers.
-		ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);  // 2 static index and vertex buffers.
-		ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);  // 1 diffuse texture slot.
-		ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4);  // 1 normal map/texture slot.
+		ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);  // 2 static index and vertex buffers.
+		ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);  // 2 static index and vertex buffers.
+		ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4);  // 1 diffuse texture slot.
+		ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5);  // 1 normal map/texture slot.
 
         CD3DX12_ROOT_PARAMETER rootParameters[TriangleLocalRootSignatureParams::Count];
         rootParameters[TriangleLocalRootSignatureParams::CubeConstantSlot].InitAsConstants(SizeOfInUint32(m_cubeCB), 1);
@@ -542,7 +542,7 @@ void D3D12RaytracingSimpleLighting::CreateRootSignatures()
 	// AABB geometry (sphere only right now)
 	{
 		CD3DX12_DESCRIPTOR_RANGE ranges[1];
-		ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5);  // Sphere texture slot
+		ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 6);  // Sphere texture slot
 
 		CD3DX12_ROOT_PARAMETER rootParameters[AABBLocalRootSignatureParams::Count];
 		rootParameters[AABBLocalRootSignatureParams::SphereConstantSlot].InitAsConstants(SizeOfInUint32(Sphere), 2);
@@ -1872,6 +1872,7 @@ void D3D12RaytracingSimpleLighting::DoRaytracing()
     {
         SetCommonPipelineState(m_fallbackCommandList.Get());
         m_fallbackCommandList->SetTopLevelAccelerationStructure(GlobalRootSignatureParams::AccelerationStructureSlot, m_fallbackTopLevelAccelerationStructurePointer);
+		m_fallbackCommandList->SetTopLevelAccelerationStructure(GlobalRootSignatureParams::GIAccelerationStructureSlot, m_fallbackTopLevelAccelerationStructurePointer);
         DispatchRays(m_fallbackCommandList.Get(), m_fallbackStateObject.Get(), &dispatchDesc);
     }
     else // DirectX Raytracing
@@ -1879,6 +1880,7 @@ void D3D12RaytracingSimpleLighting::DoRaytracing()
         SetCommonPipelineState(commandList);
         //commandList->SetComputeRootShaderResourceView(GlobalRootSignatureParams::AccelerationStructureSlot, m_topLevelAccelerationStructure->GetGPUVirtualAddress());
 		commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::AccelerationStructure, m_topLevelAS/*.accelerationStructure*/->GetGPUVirtualAddress());
+		commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::GIAccelerationStructure, m_topLevelAS/*.accelerationStructure*/->GetGPUVirtualAddress());
         DispatchRays(m_dxrCommandList.Get(), m_dxrStateObject.Get(), &dispatchDesc);
     }
 }

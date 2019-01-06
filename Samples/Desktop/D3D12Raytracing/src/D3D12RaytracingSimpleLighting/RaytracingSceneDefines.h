@@ -23,9 +23,10 @@ namespace GlobalRootSignature {
         enum Enum {
             OutputView = 0,
             AccelerationStructure,
+			GIAccelerationStructure,
             SceneConstant,
-            AABBattributeBuffer,
-            VertexBuffers,
+            //AABBattributeBuffer,
+            //VertexBuffers,
             Count
         };
     }

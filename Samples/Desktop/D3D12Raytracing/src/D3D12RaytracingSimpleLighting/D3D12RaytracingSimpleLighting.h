@@ -24,6 +24,7 @@ namespace GlobalRootSignatureParams {
     enum Value {
         OutputViewSlot = 0,
         AccelerationStructureSlot,
+		GIAccelerationStructureSlot,
 		//VertexBuffersSlot,
         SceneConstantSlot,
 		//DiffuseTextureSlot,
