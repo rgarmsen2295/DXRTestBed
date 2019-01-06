@@ -872,7 +872,7 @@ void D3D12RaytracingSimpleLighting::BuildGeometryDescsForBottomLevelAS(std::arra
 			//sponzaGeometryDescs.push_back(geometryDesc);
 		}
 
-		if (!m_sceneCB->showCharacterGISpheres) {
+		//if (!m_sceneCB->showCharacterGISpheres) {
 			// Triangle bottom-level AS contains # of shapes in given object.
 			geometryDescs[BottomLevelASType::TriangleCharacter].resize(m_character->m_obj_count);
 
@@ -898,7 +898,7 @@ void D3D12RaytracingSimpleLighting::BuildGeometryDescsForBottomLevelAS(std::arra
 
 				//sponzaGeometryDescs.push_back(geometryDesc);
 			}
-		}
+		//}
 
 		/*D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC bottomLevelBuildDesc = {};
 		D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS &bottomLevelInputs = bottomLevelBuildDesc.Inputs;
@@ -910,8 +910,8 @@ void D3D12RaytracingSimpleLighting::BuildGeometryDescsForBottomLevelAS(std::arra
 	}
 
 	// AABB geometry desc
-	if (m_sceneCB->showCharacterGISpheres)
-	{
+	//if (m_sceneCB->showCharacterGISpheres)
+	//{
 		D3D12_RAYTRACING_GEOMETRY_DESC aabbDescTemplate = {};
 		aabbDescTemplate.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_PROCEDURAL_PRIMITIVE_AABBS;
 		aabbDescTemplate.AABBs.AABBCount = 1;
@@ -929,7 +929,7 @@ void D3D12RaytracingSimpleLighting::BuildGeometryDescsForBottomLevelAS(std::arra
 			auto& geometryDesc = geometryDescs[BottomLevelASType::AABB][i];
 			geometryDesc.AABBs.AABBs.StartAddress = m_aabbBuffer.resource->GetGPUVirtualAddress() + i * sizeof(D3D12_RAYTRACING_AABB);
 		}
-	}
+	//}
 }
 
 AccelerationStructureBuffers D3D12RaytracingSimpleLighting::BuildBottomLevelAS(const std::vector<D3D12_RAYTRACING_GEOMETRY_DESC>& geometryDescs, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags)
@@ -1009,12 +1009,12 @@ AccelerationStructureBuffers D3D12RaytracingSimpleLighting::BuildBottomLevelAS(c
 }
 
 template <class BLASPtrType>
-ComPtr<ID3D12Resource> D3D12RaytracingSimpleLighting::BuildBotomLevelASInstanceDescs(BLASPtrType *bottomLevelASaddresses, ComPtr<ID3D12Resource> instanceDescsResource, bool isUpdate)
+ComPtr<ID3D12Resource> D3D12RaytracingSimpleLighting::BuildBotomLevelASInstanceDescs(BLASPtrType *bottomLevelASaddresses, ComPtr<ID3D12Resource> instanceDescsResource, bool isUpdate, bool isGI)
 {
 	auto device = m_deviceResources->GetD3DDevice();
 
 	std::vector<D3D12_RAYTRACING_INSTANCE_DESC> instanceDescs;
-	instanceDescs.resize(NUM_BLAS);
+	instanceDescs.resize(NUM_BLAS - 1);
 
 	// Bottom-level AS for the Sponza scene.
 	{
@@ -1039,8 +1039,9 @@ ComPtr<ID3D12Resource> D3D12RaytracingSimpleLighting::BuildBotomLevelASInstanceD
 	//const XMVECTOR vBasePosition = XMLoadFloat3(&XMFLOAT3(1.0f, -0.6025f, -0.15f));
 
 	// Bottom-level AS for a character model.
+	if (!isGI)
 	{
-		auto& instanceDesc = instanceDescs[BottomLevelASType::TriangleCharacter];
+		auto& instanceDesc = instanceDescs[1/*BottomLevelASType::TriangleCharacter*/];
 		instanceDesc = {};
 		instanceDesc.InstanceMask = 1;
 		instanceDesc.InstanceContributionToHitGroupIndex = m_sponza->m_obj_count * RayType::Count;
@@ -1056,8 +1057,9 @@ ComPtr<ID3D12Resource> D3D12RaytracingSimpleLighting::BuildBotomLevelASInstanceD
 
 	// Create instanced bottom-level AS with procedural geometry AABBs.
 	// Instances share all the data, except for a transform.
+	if (isGI)
 	{
-		auto& instanceDesc = instanceDescs[BottomLevelASType::AABB];
+		auto& instanceDesc = instanceDescs[0/*BottomLevelASType::AABB*/];
 		instanceDesc = {};
 		instanceDesc.InstanceMask = 1;
 
@@ -1113,6 +1115,134 @@ ComPtr<ID3D12Resource> D3D12RaytracingSimpleLighting::BuildBotomLevelASInstanceD
 	return instanceDescsResource;
 };
 
+AccelerationStructureBuffers D3D12RaytracingSimpleLighting::BuildTopLevelASGI(AccelerationStructureBuffers bottomLevelAS[BottomLevelASType::Count], D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags, bool isUpdate)
+{
+	auto device = m_deviceResources->GetD3DDevice();
+	auto commandList = m_deviceResources->GetCommandList();
+	ComPtr<ID3D12Resource> scratch;
+	ComPtr<ID3D12Resource> topLevelAS;
+
+	// Get required sizes for an acceleration structure.
+	//D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC topLevelBuildDesc = {};
+	m_topLevelBuildDescGI = {};
+	D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS &topLevelInputs = m_topLevelBuildDescGI.Inputs;
+	topLevelInputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
+	topLevelInputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+	topLevelInputs.Flags = buildFlags;
+	topLevelInputs.NumDescs = NUM_BLAS - 1;
+
+	// TODO: Save pre-build information on update.
+	D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO topLevelPrebuildInfo = {};
+	if (m_raytracingAPI == RaytracingAPI::FallbackLayer)
+	{
+		m_fallbackDevice->GetRaytracingAccelerationStructurePrebuildInfo(&topLevelInputs, &topLevelPrebuildInfo);
+	}
+	else // DirectX Raytracing
+	{
+		m_dxrDevice->GetRaytracingAccelerationStructurePrebuildInfo(&topLevelInputs, &topLevelPrebuildInfo);
+	}
+	ThrowIfFalse(topLevelPrebuildInfo.ResultDataMaxSizeInBytes > 0);
+
+	if (!isUpdate)
+	{
+		AllocateUAVBuffer(device, topLevelPrebuildInfo.ScratchDataSizeInBytes, &scratch, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"ScratchResource");
+
+		// Allocate resources for acceleration structures.
+		// Acceleration structures can only be placed in resources that are created in the default heap (or custom heap equivalent). 
+		// Default heap is OK since the application doesn’t need CPU read/write access to them. 
+		// The resources that will contain acceleration structures must be created in the state D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, 
+		// and must have resource flag D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS. The ALLOW_UNORDERED_ACCESS requirement simply acknowledges both: 
+		//  - the system will be doing this type of access in its implementation of acceleration structure builds behind the scenes.
+		//  - from the app point of view, synchronization of writes/reads to acceleration structures is accomplished using UAV barriers.
+		{
+			D3D12_RESOURCE_STATES initialResourceState;
+			if (m_raytracingAPI == RaytracingAPI::FallbackLayer)
+			{
+				initialResourceState = m_fallbackDevice->GetAccelerationStructureResourceState();
+			}
+			else // DirectX Raytracing
+			{
+				initialResourceState = D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE;
+			}
+
+			AllocateUAVBuffer(device, topLevelPrebuildInfo.ResultDataMaxSizeInBytes, &topLevelAS, initialResourceState, L"TopLevelAccelerationStructure");
+		}
+	}
+	else
+	{
+		m_topLevelBuildDescGI.SourceAccelerationStructureData = m_topLevelASGI->GetGPUVirtualAddress();
+		scratch = m_topLevelScratchGI;
+		topLevelAS = m_topLevelASGI;
+	}
+
+	// Note on Emulated GPU pointers (AKA Wrapped pointers) requirement in Fallback Layer:
+	// The primary point of divergence between the DXR API and the compute-based Fallback layer is the handling of GPU pointers. 
+	// DXR fundamentally requires that GPUs be able to dynamically read from arbitrary addresses in GPU memory. 
+	// The existing Direct Compute API today is more rigid than DXR and requires apps to explicitly inform the GPU what blocks of memory it will access with SRVs/UAVs.
+	// In order to handle the requirements of DXR, the Fallback Layer uses the concept of Emulated GPU pointers, 
+	// which requires apps to create views around all memory they will access for raytracing, 
+	// but retains the DXR-like flexibility of only needing to bind the top level acceleration structure at DispatchRays.
+	//
+	// The Fallback Layer interface uses WRAPPED_GPU_POINTER to encapsulate the underlying pointer
+	// which will either be an emulated GPU pointer for the compute - based path or a GPU_VIRTUAL_ADDRESS for the DXR path.
+
+	// Create instance descs for the bottom-level acceleration structures.
+	ComPtr<ID3D12Resource> instanceDescsResource;
+	if (isUpdate)
+	{
+		instanceDescsResource = m_instanceDescsResourceGI;
+	}
+
+	if (m_raytracingAPI == RaytracingAPI::FallbackLayer)
+	{
+	}
+	else // DirectX Raytracing
+	{
+		D3D12_RAYTRACING_INSTANCE_DESC instanceDescs[BottomLevelASType::Count] = {};
+		D3D12_GPU_VIRTUAL_ADDRESS bottomLevelASaddresses[BottomLevelASType::Count] =
+		{
+			bottomLevelAS[0].accelerationStructure->GetGPUVirtualAddress(),
+			bottomLevelAS[1].accelerationStructure->GetGPUVirtualAddress(),
+			bottomLevelAS[2].accelerationStructure->GetGPUVirtualAddress()
+		};
+		instanceDescsResource = BuildBotomLevelASInstanceDescs(bottomLevelASaddresses, instanceDescsResource, isUpdate, true /* isGI */);
+	}
+
+	// Create a wrapped pointer to the acceleration structure.
+	if (m_raytracingAPI == RaytracingAPI::FallbackLayer)
+	{
+		UINT numBufferElements = static_cast<UINT>(topLevelPrebuildInfo.ResultDataMaxSizeInBytes) / sizeof(UINT32);
+		m_fallbackTopLevelAccelerationStructurePointer = CreateFallbackWrappedPointer(topLevelAS.Get(), numBufferElements);
+	}
+
+	// Top-level AS desc
+	{
+		m_topLevelBuildDescGI.DestAccelerationStructureData = topLevelAS->GetGPUVirtualAddress();
+		topLevelInputs.InstanceDescs = instanceDescsResource->GetGPUVirtualAddress();
+		m_topLevelBuildDescGI.ScratchAccelerationStructureData = scratch->GetGPUVirtualAddress();
+	}
+
+	// Build acceleration structure.
+	if (m_raytracingAPI == RaytracingAPI::FallbackLayer)
+	{
+		// Set the descriptor heaps to be used during acceleration structure build for the Fallback Layer.
+		ID3D12DescriptorHeap *pDescriptorHeaps[] = { m_descriptorHeap.Get() };
+		m_fallbackCommandList->SetDescriptorHeaps(ARRAYSIZE(pDescriptorHeaps), pDescriptorHeaps);
+		m_fallbackCommandList->BuildRaytracingAccelerationStructure(&m_topLevelBuildDesc, 0, nullptr);
+	}
+	else // DirectX Raytracing
+	{
+		m_dxrCommandList->BuildRaytracingAccelerationStructure(&m_topLevelBuildDescGI, 0, nullptr);
+	}
+
+	AccelerationStructureBuffers topLevelASBuffers;
+	topLevelASBuffers.accelerationStructure = topLevelAS;
+	topLevelASBuffers.instanceDesc = instanceDescsResource;
+	topLevelASBuffers.scratch = scratch;
+	topLevelASBuffers.ResultDataMaxSizeInBytes = topLevelPrebuildInfo.ResultDataMaxSizeInBytes;
+	return topLevelASBuffers;
+}
+
 AccelerationStructureBuffers D3D12RaytracingSimpleLighting::BuildTopLevelAS(AccelerationStructureBuffers bottomLevelAS[BottomLevelASType::Count], D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags, bool isUpdate)
 {
 	auto device = m_deviceResources->GetD3DDevice();
@@ -1127,7 +1257,7 @@ AccelerationStructureBuffers D3D12RaytracingSimpleLighting::BuildTopLevelAS(Acce
 	topLevelInputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
 	topLevelInputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
 	topLevelInputs.Flags = buildFlags;
-	topLevelInputs.NumDescs = NUM_BLAS;
+	topLevelInputs.NumDescs = NUM_BLAS - 1;
 
 	// TODO: Save pre-build information on update.
 	D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO topLevelPrebuildInfo = {};
@@ -1211,7 +1341,7 @@ AccelerationStructureBuffers D3D12RaytracingSimpleLighting::BuildTopLevelAS(Acce
 			bottomLevelAS[1].accelerationStructure->GetGPUVirtualAddress(),
 			bottomLevelAS[2].accelerationStructure->GetGPUVirtualAddress()
 		};
-		instanceDescsResource = BuildBotomLevelASInstanceDescs(bottomLevelASaddresses, instanceDescsResource, isUpdate);
+		instanceDescsResource = BuildBotomLevelASInstanceDescs(bottomLevelASaddresses, instanceDescsResource, isUpdate, false /* isGI */);
 	}
 
 	// Create a wrapped pointer to the acceleration structure.
@@ -1467,6 +1597,7 @@ void D3D12RaytracingSimpleLighting::BuildAccelerationStructures(bool isUpdate)
 	// TODO: Fix issue where deleting after resizing window causes crash.
 	//m_topLevelAS = BuildTopLevelAS(bottomLevelAS, buildFlags);
 	AccelerationStructureBuffers topLevelAS = BuildTopLevelAS(bottomLevelAS, buildFlags, isUpdate);
+	AccelerationStructureBuffers topLevelASGI = BuildTopLevelASGI(bottomLevelAS, buildFlags, isUpdate);
 
 	// Kick off acceleration structure construction.
 	m_deviceResources->ExecuteCommandList();
@@ -1479,6 +1610,10 @@ void D3D12RaytracingSimpleLighting::BuildAccelerationStructures(bool isUpdate)
 		m_instanceDescsResource = topLevelAS.instanceDesc;
 		m_topLevelScratch = topLevelAS.scratch;
 		m_topLevelAS = topLevelAS.accelerationStructure;
+
+		m_instanceDescsResourceGI = topLevelASGI.instanceDesc;
+		m_topLevelScratchGI = topLevelASGI.scratch;
+		m_topLevelASGI = topLevelASGI.accelerationStructure;
 	}
 
 	// Store the AS buffers. The rest of the buffers will be released once we exit the function.
@@ -1487,6 +1622,7 @@ void D3D12RaytracingSimpleLighting::BuildAccelerationStructures(bool isUpdate)
 		m_bottomLevelAS[i] = bottomLevelAS[i].accelerationStructure;
 	}
 	m_topLevelAS = topLevelAS.accelerationStructure;
+	m_topLevelASGI = topLevelASGI.accelerationStructure;
 }
 
 // Build shader tables.
@@ -1879,8 +2015,8 @@ void D3D12RaytracingSimpleLighting::DoRaytracing()
     {
         SetCommonPipelineState(commandList);
         //commandList->SetComputeRootShaderResourceView(GlobalRootSignatureParams::AccelerationStructureSlot, m_topLevelAccelerationStructure->GetGPUVirtualAddress());
-		commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::AccelerationStructure, m_topLevelAS/*.accelerationStructure*/->GetGPUVirtualAddress());
-		commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::GIAccelerationStructure, m_topLevelAS/*.accelerationStructure*/->GetGPUVirtualAddress());
+		commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::AccelerationStructure, m_topLevelAS->GetGPUVirtualAddress());
+		commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::GIAccelerationStructure, m_topLevelASGI->GetGPUVirtualAddress());
         DispatchRays(m_dxrCommandList.Get(), m_dxrStateObject.Get(), &dispatchDesc);
     }
 }

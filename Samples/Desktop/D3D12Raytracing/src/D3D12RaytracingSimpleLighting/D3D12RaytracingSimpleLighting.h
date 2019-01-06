@@ -245,8 +245,13 @@ private:
 	ComPtr<ID3D12Resource> m_topLevelScratch;
 	ComPtr<ID3D12Resource> m_instanceDescsResource;
 
+	ComPtr<ID3D12Resource> m_topLevelASGI;
+	ComPtr<ID3D12Resource> m_topLevelScratchGI;
+	ComPtr<ID3D12Resource> m_instanceDescsResourceGI;
+
 	//std::vector<D3D12_RAYTRACING_INSTANCE_DESC> m_instanceDescs;
 	D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC m_topLevelBuildDesc;
+	D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC m_topLevelBuildDescGI;
 
     // Raytracing output
     ComPtr<ID3D12Resource> m_raytracingOutput;
@@ -313,8 +318,9 @@ private:
 	void BuildGeometryDescsForBottomLevelAS(std::array<std::vector<D3D12_RAYTRACING_GEOMETRY_DESC>, BottomLevelASType::Count>& geometryDescs);
 	AccelerationStructureBuffers BuildBottomLevelAS(const std::vector<D3D12_RAYTRACING_GEOMETRY_DESC>& geometryDescs, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE);
 	template <class BLASPtrType>
-	ComPtr<ID3D12Resource> BuildBotomLevelASInstanceDescs(BLASPtrType *bottomLevelASaddresses, ComPtr<ID3D12Resource> instanceDescsResource, bool isUpdate = false);
+	ComPtr<ID3D12Resource> BuildBotomLevelASInstanceDescs(BLASPtrType *bottomLevelASaddresses, ComPtr<ID3D12Resource> instanceDescsResource, bool isUpdate = false, bool isGI = false);
 	AccelerationStructureBuffers BuildTopLevelAS(AccelerationStructureBuffers bottomLevelAS[BottomLevelASType::Count], D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE, bool isUpdate = false);
+	AccelerationStructureBuffers BuildTopLevelASGI(AccelerationStructureBuffers bottomLevelAS[BottomLevelASType::Count], D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags, bool isUpdate);
 	void UpdateCharacter(float deltaTime);
 	void BuildAccelerationStructures(bool isUpdate);
     void BuildShaderTables();
