@@ -249,6 +249,8 @@ private:
 	ComPtr<ID3D12Resource> m_topLevelScratchGI;
 	ComPtr<ID3D12Resource> m_instanceDescsResourceGI;
 
+	bool m_onlyUseCharacterForGI;
+
 	//std::vector<D3D12_RAYTRACING_INSTANCE_DESC> m_instanceDescs;
 	D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC m_topLevelBuildDesc;
 	D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC m_topLevelBuildDescGI;

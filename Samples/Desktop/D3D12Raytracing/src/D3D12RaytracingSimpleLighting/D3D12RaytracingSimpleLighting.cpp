@@ -186,6 +186,8 @@ void D3D12RaytracingSimpleLighting::InitializeScene()
 
 	XMFLOAT3 initialCharacterPosition = XMFLOAT3(1.0f, -0.6025f, -0.15f);
 	m_characterPosition = XMLoadFloat3(&initialCharacterPosition);
+
+	m_onlyUseCharacterForGI = false;
 }
 
 // Create constant buffers.
@@ -1018,6 +1020,7 @@ ComPtr<ID3D12Resource> D3D12RaytracingSimpleLighting::BuildBotomLevelASInstanceD
 	instanceDescs.resize(NUM_BLAS - 1);
 
 	// Bottom-level AS for the Sponza scene.
+	if (!m_onlyUseCharacterForGI || !isGI)
 	{
 		auto& instanceDesc = instanceDescs[BottomLevelASType::TriangleSponza];
 		instanceDesc = {};
@@ -1896,6 +1899,8 @@ void D3D12RaytracingSimpleLighting::OnUpdate()
 		const XMVECTOR& prevLightPosition = m_sceneCB[prevFrameIndex].lightPosition;
 		m_sceneCB[frameIndex].lightPosition = XMVector3Transform(prevLightPosition, translate);
 
+
+		// Toggle GI and normal mapping.
 		static bool useGlobalIllumination = false;
 		static bool useNormalTexturing = false;
 		if (GetKeyState('G') & 0x8000)
@@ -1917,6 +1922,7 @@ void D3D12RaytracingSimpleLighting::OnUpdate()
 		m_sceneCB[frameIndex].useGlobalIllumination = useGlobalIllumination ? 1 : 0;
 		m_sceneCB[frameIndex].useNormalTexturing = useNormalTexturing ? 1 : 0;
 
+		// Increase/decrease the number of samples used when calculating GI.
 		static UINT numGISamples = 2;
 		if (GetKeyState('O') & 0x8000)
 		{
@@ -1928,31 +1934,45 @@ void D3D12RaytracingSimpleLighting::OnUpdate()
 		}
 		m_sceneCB[frameIndex].numGISamples = numGISamples;
 
+		// Toggle intersecting the GI spheres for debug purposes.
 		static bool useCharacterSpheresForPrimary = false;
 		if (GetKeyState('V') & 0x8000)
 		{
 			useCharacterSpheresForPrimary = true;
-			//BuildAccelerationStructures(/* isUpdate */ false);
 		}
 		if (GetKeyState('B') & 0x8000)
 		{
 			useCharacterSpheresForPrimary = false;
-			//BuildAccelerationStructures(/* isUpdate */ false);
 		}
 		m_sceneCB[frameIndex].useCharacterSpheresForPrimary = useCharacterSpheresForPrimary;
 
+		// Toggle using the full character mesh for second bounce intersections.
 		static bool useCharacterMeshForGI = false;
 		if (GetKeyState('X') & 0x8000)
 		{
 			useCharacterMeshForGI = true;
-			//BuildAccelerationStructures(/* isUpdate */ false);
 		}
 		if (GetKeyState('C') & 0x8000)
 		{
 			useCharacterMeshForGI = false;
-			//BuildAccelerationStructures(/* isUpdate */ false);
 		}
 		m_sceneCB[frameIndex].useCharacterMeshForGI = useCharacterMeshForGI;
+
+		// Perform a full rebuild of the acceleration structures.
+		if (GetKeyState('R') & 0x8000)
+		{
+			BuildAccelerationStructures(/* isUpdate */ false);
+		}
+
+		// Switch only using GI from character (spheres or mesh depending on other setting).
+		if (GetKeyState('Y') & 0x8000)
+		{
+			m_onlyUseCharacterForGI = true;
+		}
+		if (GetKeyState('U') & 0x8000)
+		{
+			m_onlyUseCharacterForGI = false;
+		}
 	}
 
 	UpdateCharacter(elapsedTime);
