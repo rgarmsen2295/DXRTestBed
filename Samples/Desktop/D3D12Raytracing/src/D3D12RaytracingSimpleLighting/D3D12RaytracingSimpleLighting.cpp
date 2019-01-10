@@ -160,7 +160,7 @@ void D3D12RaytracingSimpleLighting::InitializeScene()
         XMFLOAT4 lightAmbientColor;
         XMFLOAT4 lightDiffuseColor;
 
-        lightPosition = XMFLOAT4(0.0f, 1.8f, 0.0f/*-3.0f*/, 0.0f);
+        lightPosition = XMFLOAT4(0.0f, 0.0f, 0.0f/*-3.0f*/, 0.0f);
         m_sceneCB[frameIndex].lightPosition = XMLoadFloat4(&lightPosition);
 
         lightAmbientColor = XMFLOAT4(0.5f, 0.5f, 0.5f, 1.0f);
@@ -184,8 +184,10 @@ void D3D12RaytracingSimpleLighting::InitializeScene()
         sceneCB = m_sceneCB[frameIndex];
     }
 
-	XMFLOAT3 initialCharacterPosition = XMFLOAT3(1.0f, -0.6025f, -0.15f);
+	XMFLOAT3 initialCharacterPosition = XMFLOAT3(1.4f, -0.6025f, -0.15f);
 	m_characterPosition = XMLoadFloat3(&initialCharacterPosition);
+	
+	m_characterRotation = 0.0;
 
 	m_onlyUseCharacterForGI = false;
 }
@@ -311,7 +313,7 @@ void D3D12RaytracingSimpleLighting::LoadTextures()
 	stbi_set_flip_vertically_on_load(true);
 
 	// Load image file.
-	std::string sphereTexName = "earth_big.jpg"; // Random image from sponza for now.
+	std::string sphereTexName = "boot-diffuse-sphere.png";//"earth_big.jpg"; // Random image from sponza for now.
 	std::string mtlPath = "resources/";
 
 	// Upload texture to GPU (and create things like mip-maps).
@@ -755,37 +757,48 @@ void D3D12RaytracingSimpleLighting::BuildProceduralGeometryAABBs()
 	auto device = m_deviceResources->GetD3DDevice();
 
 	// Set up Sphere geometry info.
+	// Set up Sphere geometry info.
 	{
-		m_numSpheres = IntersectionShaderType::TotalPrimitiveCount;
+		m_numSpheres = 1;//IntersectionShaderType::TotalPrimitiveCount;
 
 		m_spheres.resize(m_numSpheres);
+
+		// Boot
+		m_spheres[0].info = XMFLOAT4(0.0, 0.0, 0.0/*-0.05*/, 0.04);
+
+		XMMATRIX mScale = XMMatrixIdentity();//XMMatrixScaling(0.05f, 0.05f, 0.05f);//Character: XMMatrixScaling(0.1f, 0.1f, 0.1f);
+		XMMATRIX mRotate = XMMatrixIdentity();// XMMatrixRotationY(XMConvertToRadians(m_characterRotation + 90.0));
+		XMMATRIX mTranslation = XMMatrixIdentity(); //XMMatrixTranslationFromVector(m_characterPosition);
+		XMMATRIX mTransform = mScale * mRotate * mTranslation;
+		m_spheres[0].transform = mTransform;
+		m_spheres[0].invTransform = XMMatrixInverse(nullptr, mTransform);
 		
 		// Head
-		m_spheres[0].info = XMFLOAT4(0.00, 0.50, 0.015, 0.125);
+		//m_spheres[0].info = XMFLOAT4(0.00, 0.50, 0.015, 0.125);
 
-		// Body
-		m_spheres[1].info = XMFLOAT4(0.00, 0.25, 0.000, 0.1875);
-		m_spheres[2].info = XMFLOAT4(0.00, 0.00, 0.000, 0.1875);
+		//// Body
+		//m_spheres[1].info = XMFLOAT4(0.00, 0.25, 0.000, 0.1875);
+		//m_spheres[2].info = XMFLOAT4(0.00, 0.00, 0.000, 0.1875);
 
-		// Right Arm
-		m_spheres[3].info = XMFLOAT4(0.150, 0.250, 0.000, 0.125);
-		m_spheres[4].info = XMFLOAT4(0.235, 0.075, 0.000, 0.125);
+		//// Right Arm
+		//m_spheres[3].info = XMFLOAT4(0.150, 0.250, 0.000, 0.125);
+		//m_spheres[4].info = XMFLOAT4(0.235, 0.075, 0.000, 0.125);
 
-		// Left Arm
-		m_spheres[5].info = XMFLOAT4(-0.150, 0.250, 0.000, 0.125);
-		m_spheres[6].info = XMFLOAT4(-0.235, 0.075, 0.000, 0.125);
+		//// Left Arm
+		//m_spheres[5].info = XMFLOAT4(-0.150, 0.250, 0.000, 0.125);
+		//m_spheres[6].info = XMFLOAT4(-0.235, 0.075, 0.000, 0.125);
 
-		// Right Leg
-		m_spheres[7].info = XMFLOAT4(0.06, -0.05, 0.0, 0.125);
-		m_spheres[8].info = XMFLOAT4(0.09, -0.20, 0.0, 0.125);
-		m_spheres[9].info = XMFLOAT4(0.12, -0.35, 0.0, 0.125);
-		m_spheres[10].info = XMFLOAT4(0.15, -0.50, 0.0, 0.125);
+		//// Right Leg
+		//m_spheres[7].info = XMFLOAT4(0.06, -0.05, 0.0, 0.125);
+		//m_spheres[8].info = XMFLOAT4(0.09, -0.20, 0.0, 0.125);
+		//m_spheres[9].info = XMFLOAT4(0.12, -0.35, 0.0, 0.125);
+		//m_spheres[10].info = XMFLOAT4(0.15, -0.50, 0.0, 0.125);
 
-		// Left Leg
-		m_spheres[11].info = XMFLOAT4(-0.06, -0.05, 0.0, 0.125);
-		m_spheres[12].info = XMFLOAT4(-0.09, -0.20, 0.0, 0.125);
-		m_spheres[13].info = XMFLOAT4(-0.12, -0.35, 0.0, 0.125);
-		m_spheres[14].info = XMFLOAT4(-0.15, -0.50, 0.0, 0.125);
+		//// Left Leg
+		//m_spheres[11].info = XMFLOAT4(-0.06, -0.05, 0.0, 0.125);
+		//m_spheres[12].info = XMFLOAT4(-0.09, -0.20, 0.0, 0.125);
+		//m_spheres[13].info = XMFLOAT4(-0.12, -0.35, 0.0, 0.125);
+		//m_spheres[14].info = XMFLOAT4(-0.15, -0.50, 0.0, 0.125);
 	}
 
 	// Set up Sphere AABBs.
@@ -829,7 +842,7 @@ void D3D12RaytracingSimpleLighting::BuildGeometry()
 
 	m_character = std::make_shared<Shape>();
 
-	std::string characterObj = resourcePath + "muro.obj";
+	std::string characterObj = resourcePath + "boot.obj";
 
 	m_character->loadMesh(characterObj, &resourcePath);
 	m_character->resize();
@@ -1053,9 +1066,10 @@ ComPtr<ID3D12Resource> D3D12RaytracingSimpleLighting::BuildBotomLevelASInstanceD
 		//instanceDesc.Transform[0][0] = instanceDesc.Transform[1][1] = instanceDesc.Transform[2][2] = 1;
 
 		// Scale in XZ dimensions.
-		XMMATRIX mScale = XMMatrixScaling(0.1f, 0.1f, 0.1f);
+		XMMATRIX mScale = XMMatrixScaling(0.05f, 0.05f, 0.05f);//Character: XMMatrixScaling(0.1f, 0.1f, 0.1f);
+		XMMATRIX mRotate = XMMatrixRotationY(XMConvertToRadians(m_characterRotation));
 		XMMATRIX mTranslation = XMMatrixTranslationFromVector(m_characterPosition);
-		XMMATRIX mTransform = mScale * mTranslation;
+		XMMATRIX mTransform = mScale * mRotate * mTranslation;
 		XMStoreFloat3x4(reinterpret_cast<XMFLOAT3X4*>(instanceDesc.Transform), mTransform);
 	}
 
@@ -1073,9 +1087,15 @@ ComPtr<ID3D12Resource> D3D12RaytracingSimpleLighting::BuildBotomLevelASInstanceD
 		//instanceDesc.Transform[0][0] = instanceDesc.Transform[1][1] = instanceDesc.Transform[2][2] = 1;
 
 		// Scale in XZ dimensions.
-		XMMATRIX mScale = XMMatrixScaling(0.175f, 0.175f, 0.175f);
+		XMMATRIX mScale = XMMatrixIdentity();// XMMatrixScaling(0.175f, 0.175f, 0.175f);
+		//float secondsToRotateAround = 24.0f;
+		//float angleToRotateBy = 360.0f * (elapsedTime / secondsToRotateAround);
+		XMMATRIX mRotate = XMMatrixRotationY(XMConvertToRadians(90.0f + m_characterRotation));
+		//m_eye = XMVector3Transform(m_eye, rotate);
+		//m_up = XMVector3Transform(m_up, rotate);
+		//m_at = XMVector3Transform(m_at, rotate);
 		XMMATRIX mTranslation = XMMatrixTranslationFromVector(m_characterPosition);
-		XMMATRIX mTransform = mScale * mTranslation;
+		XMMATRIX mTransform = mScale * mRotate * mTranslation;
 		XMStoreFloat3x4(reinterpret_cast<XMFLOAT3X4*>(instanceDesc.Transform), mTransform);
 
 		// Move all AABBS above the ground plane.
@@ -1461,81 +1481,32 @@ void D3D12RaytracingSimpleLighting::UpdateCharacter(float deltaTime)
 	{
 		movementDirection = 1;
 	}
-	newCharacterPosition.z += deltaTime * movementDirection * 0.1;
 
-	m_characterPosition = XMLoadFloat3(&newCharacterPosition);
+	// Switch only using GI from character (spheres or mesh depending on other setting).
+	static bool shouldRotate = true;
+	if (GetKeyState('1') & 0x8000)
+	{
+		shouldRotate = true;
+	}
+	if (GetKeyState('2') & 0x8000)
+	{
+		shouldRotate = false;
+	}
+
+	if (shouldRotate)
+	{
+		m_characterRotation += deltaTime * 100.0;
+	}
+
+	//newCharacterPosition.z += deltaTime * movementDirection * 0.1;
+
+	//m_characterPosition = XMLoadFloat3(&newCharacterPosition);
 
 	// Top-level acceleration structure updating.
 	// Resource: https://developer.nvidia.com/rtx/raytracing/dxr/DX12-Raytracing-tutorial/Extra/dxr_tutorial_extra_refit
-#ifdef false
-	{
-		auto commandList = m_deviceResources->GetCommandList();
-		auto commandQueue = m_deviceResources->GetCommandQueue();
-		auto commandAllocator = m_deviceResources->GetCommandAllocator();
-
-		// Reset the command list for the acceleration structure construction.
-		commandList->Reset(commandAllocator, nullptr);
-
-		//m_instanceDescs;
-		//D3D12_RAYTRACING_INSTANCE_DESC* instanceDescs;
-		m_topLevelAS.instanceDesc->Map(0, nullptr, reinterpret_cast<void**>(&m_instanceDescs));
-
-		// Bottom-level AS for a character model.
-		{
-			auto& instanceDesc = m_instanceDescs[BottomLevelASType::TriangleCharacter];
-			//instanceDesc = {};
-			//instanceDesc.InstanceMask = 1;
-			//instanceDesc.InstanceContributionToHitGroupIndex = m_sponza->m_obj_count * RayType::Count;
-			//instanceDesc.AccelerationStructure = bottomLevelASaddresses[BottomLevelASType::TriangleCharacter];
-			//instanceDesc.Transform[0][0] = instanceDesc.Transform[1][1] = instanceDesc.Transform[2][2] = 1;
-
-			// Scale in XZ dimensions.
-			XMMATRIX mScale = XMMatrixScaling(0.1f, 0.1f, 0.1f);
-			XMMATRIX mTranslation = XMMatrixTranslationFromVector(m_characterPosition);
-			XMMATRIX mTransform = mScale * mTranslation;
-			XMStoreFloat3x4(reinterpret_cast<XMFLOAT3X4*>(instanceDesc.Transform), mTransform);
-		}
-
-		// Create instanced bottom-level AS with procedural geometry AABBs.
-		// Instances share all the data, except for a transform.
-		{
-			auto& instanceDesc = m_instanceDescs[BottomLevelASType::AABB];
-			//instanceDesc = {};
-			//instanceDesc.InstanceMask = 1;
-
-			// Set hit group offset to beyond the shader records for the triangle AABB.
-			//instanceDesc.InstanceContributionToHitGroupIndex = /*BottomLevelASType::AABB **/ (m_sponza->m_obj_count + m_character->m_obj_count) * RayType::Count; //change if shadow rays, etc introduced.
-			//instanceDesc.AccelerationStructure = bottomLevelASaddresses[BottomLevelASType::AABB];
-			//instanceDesc.Transform[0][0] = instanceDesc.Transform[1][1] = instanceDesc.Transform[2][2] = 1;
-
-			// Scale in XZ dimensions.
-			XMMATRIX mScale = XMMatrixScaling(0.175f, 0.175f, 0.175f);
-			XMMATRIX mTranslation = XMMatrixTranslationFromVector(m_characterPosition);
-			XMMATRIX mTransform = mScale * mTranslation;
-			XMStoreFloat3x4(reinterpret_cast<XMFLOAT3X4*>(instanceDesc.Transform), mTransform);
-		}
-
-		m_topLevelAS.instanceDesc->Unmap(0, nullptr);
-
-		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE;
-		m_topLevelBuildDesc.SourceAccelerationStructureData = m_topLevelAS.accelerationStructure.Get()->GetGPUVirtualAddress();
-		m_topLevelBuildDesc.Inputs.Flags = flags;
-		//m_topLevelBuildDesc
-
-		// Build the top-level AS
-		m_dxrCommandList->BuildRaytracingAccelerationStructure(&m_topLevelBuildDesc, 0, nullptr);
-
-		// Kick off acceleration structure construction.
-		m_deviceResources->ExecuteCommandList();
-
-		// Wait for GPU to finish as the locally created temporary GPU resources will get released once we go out of scope.
-		m_deviceResources->WaitForGpu();
-	}
-#else
 	{
 		BuildAccelerationStructures(true);
 	}
-#endif
 
 	// Batch all resource barriers for bottom-level AS builds.
 	//D3D12_RESOURCE_BARRIER resourceBarriers[BottomLevelASType::Count];
@@ -1565,7 +1536,10 @@ void D3D12RaytracingSimpleLighting::BuildAccelerationStructures(bool isUpdate)
 	D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE;
 
 	// Reset the command list for the acceleration structure construction.
-	commandList->Reset(commandAllocator, nullptr);
+	//if (!isUpdate)
+	{
+		commandList->Reset(commandAllocator, nullptr);
+	}
 
 	// Build bottom-level AS.
 	AccelerationStructureBuffers bottomLevelAS[BottomLevelASType::Count];
@@ -1603,21 +1577,32 @@ void D3D12RaytracingSimpleLighting::BuildAccelerationStructures(bool isUpdate)
 	AccelerationStructureBuffers topLevelAS = BuildTopLevelAS(bottomLevelAS, buildFlags, isUpdate);
 	AccelerationStructureBuffers topLevelASGI = BuildTopLevelASGI(bottomLevelAS, buildFlags, isUpdate);
 
-	// Kick off acceleration structure construction.
-	m_deviceResources->ExecuteCommandList();
+	//if (!isUpdate)
+	{
+		// Kick off acceleration structure construction.
+		m_deviceResources->ExecuteCommandList();
 
-	// Wait for GPU to finish as the locally created temporary GPU resources will get released once we go out of scope.
-	m_deviceResources->WaitForGpu();
+		// Wait for GPU to finish as the locally created temporary GPU resources will get released once we go out of scope.
+		m_deviceResources->WaitForGpu();
+	}
 
 	if (!isUpdate)
 	{
+		m_instanceDescsResourceOld = m_instanceDescsResource;
+		m_topLevelScratchOld = m_topLevelScratch;
+		//m_topLevelASOld = m_topLevelAS;
+
+		m_instanceDescsResourceGIOld = m_instanceDescsResourceGI;
+		m_topLevelScratchGIOld = m_topLevelScratchGI;
+		//m_topLevelASGIOld = m_topLevelASGI;
+
 		m_instanceDescsResource = topLevelAS.instanceDesc;
 		m_topLevelScratch = topLevelAS.scratch;
-		m_topLevelAS = topLevelAS.accelerationStructure;
+		//m_topLevelAS = topLevelAS.accelerationStructure;
 
 		m_instanceDescsResourceGI = topLevelASGI.instanceDesc;
 		m_topLevelScratchGI = topLevelASGI.scratch;
-		m_topLevelASGI = topLevelASGI.accelerationStructure;
+		//m_topLevelASGI = topLevelASGI.accelerationStructure;
 	}
 
 	// Store the AS buffers. The rest of the buffers will be released once we exit the function.
@@ -1625,6 +1610,9 @@ void D3D12RaytracingSimpleLighting::BuildAccelerationStructures(bool isUpdate)
 	{
 		m_bottomLevelAS[i] = bottomLevelAS[i].accelerationStructure;
 	}
+
+	m_topLevelASOld = m_topLevelAS;
+	m_topLevelASGIOld = m_topLevelASGI;
 	m_topLevelAS = topLevelAS.accelerationStructure;
 	m_topLevelASGI = topLevelASGI.accelerationStructure;
 }
@@ -1724,7 +1712,7 @@ void D3D12RaytracingSimpleLighting::BuildShaderTables()
 		UINT numSponzaTriangleShaderRecords = m_sponza->m_obj_count;
 		UINT numCharacterTriangleShaderRecords = m_character->m_obj_count;
 
-		UINT numAABBShaderRecords = m_numSpheres; // Only 1 sphere right now.
+		UINT numAABBShaderRecords = m_numSpheres; // Only 1 sphere aabb right now.
 
 		UINT numShaderRecords = (numSponzaTriangleShaderRecords + numCharacterTriangleShaderRecords + numAABBShaderRecords) * RayType::Count;
 
@@ -1818,35 +1806,35 @@ void D3D12RaytracingSimpleLighting::SelectRaytracingAPI(RaytracingAPI type)
 void D3D12RaytracingSimpleLighting::OnKeyDown(UINT8 key)
 {
     // Store previous values.
-    RaytracingAPI previousRaytracingAPI = m_raytracingAPI;
-    bool previousForceComputeFallback = m_forceComputeFallback;
+    /*RaytracingAPI previousRaytracingAPI = m_raytracingAPI;
+    bool previousForceComputeFallback = m_forceComputeFallback;*/
 
-    switch (key)
-    {
-    case VK_NUMPAD1:
-    case '1': // Fallback Layer
-        m_forceComputeFallback = false;
-        SelectRaytracingAPI(RaytracingAPI::FallbackLayer);
-        break;
-    case VK_NUMPAD2:
-    case '2': // Fallback Layer + force compute path
-        m_forceComputeFallback = true;
-        SelectRaytracingAPI(RaytracingAPI::FallbackLayer);
-        break;
-    case VK_NUMPAD3:
-    case '3': // DirectX Raytracing
-        SelectRaytracingAPI(RaytracingAPI::DirectXRaytracing);
-        break;
-    default:
-        break;
-    }
+    //switch (key)
+    //{
+    //case VK_NUMPAD1:
+    //case '1': // Fallback Layer
+    //    m_forceComputeFallback = false;
+    //    SelectRaytracingAPI(RaytracingAPI::FallbackLayer);
+    //    break;
+    //case VK_NUMPAD2:
+    //case '2': // Fallback Layer + force compute path
+    //    m_forceComputeFallback = true;
+    //    SelectRaytracingAPI(RaytracingAPI::FallbackLayer);
+    //    break;
+    //case VK_NUMPAD3:
+    //case '3': // DirectX Raytracing
+    //    SelectRaytracingAPI(RaytracingAPI::DirectXRaytracing);
+    //    break;
+    //default:
+    //    break;
+    //}
     
-    if (m_raytracingAPI != previousRaytracingAPI ||
-        m_forceComputeFallback != previousForceComputeFallback)
-    {
-        // Raytracing API selection changed, recreate everything.
-        RecreateD3D();
-    }
+    //if (m_raytracingAPI != previousRaytracingAPI ||
+    //    m_forceComputeFallback != previousForceComputeFallback)
+    //{
+    //    // Raytracing API selection changed, recreate everything.
+    //    RecreateD3D();
+    //}
 }
 
 // Update frame-based values.
@@ -1854,7 +1842,7 @@ void D3D12RaytracingSimpleLighting::OnUpdate()
 {
 	m_timer.Tick();
 	CalculateFrameStats();
-	float elapsedTime = static_cast<float>(m_timer.GetElapsedSeconds());
+	m_elapsedTime = static_cast<float>(m_timer.GetElapsedSeconds());
 	auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
 	auto prevFrameIndex = m_deviceResources->GetPreviousFrameIndex();
 
@@ -1866,7 +1854,7 @@ void D3D12RaytracingSimpleLighting::OnUpdate()
 		//m_eye = XMVector3Transform(m_eye, rotate);
 		//m_up = XMVector3Transform(m_up, rotate);
 		//m_at = XMVector3Transform(m_at, rotate);
-		m_camera.update(elapsedTime);
+		m_camera.update(m_elapsedTime);
 		UpdateCameraMatrices();
 	}
 
@@ -1880,19 +1868,27 @@ void D3D12RaytracingSimpleLighting::OnUpdate()
 		XMFLOAT3 lightOffset = XMFLOAT3(0.0, 0.0, 0.0);
 		if (GetKeyState('I') & 0x8000)
 		{
-			lightOffset.x += elapsedTime;
+			lightOffset.x += m_elapsedTime;
 		}
 		if (GetKeyState('K') & 0x8000)
 		{
-			lightOffset.x -= elapsedTime;
+			lightOffset.x -= m_elapsedTime;
 		}
 		if (GetKeyState('L') & 0x8000)
 		{
-			lightOffset.z += elapsedTime;
+			lightOffset.z += m_elapsedTime;
 		}
 		if (GetKeyState('J') & 0x8000)
 		{
-			lightOffset.z -= elapsedTime;
+			lightOffset.z -= m_elapsedTime;
+		}
+		if (GetKeyState('E') & 0x8000)
+		{
+			lightOffset.y += m_elapsedTime;
+		}
+		if (GetKeyState('Q') & 0x8000)
+		{
+			lightOffset.y -= m_elapsedTime;
 		}
 		XMMATRIX translate = XMMatrixTranslationFromVector(XMLoadFloat3(&lightOffset));
 
@@ -1975,7 +1971,7 @@ void D3D12RaytracingSimpleLighting::OnUpdate()
 		}
 	}
 
-	UpdateCharacter(elapsedTime);
+	UpdateCharacter(m_elapsedTime);
 }
 
 // Parse supplied command line args.
@@ -2147,6 +2143,7 @@ void D3D12RaytracingSimpleLighting::OnRender()
     }
 
     m_deviceResources->Prepare();
+	//UpdateCharacter(m_elapsedTime);
     DoRaytracing();
     CopyRaytracingOutputToBackbuffer();
 

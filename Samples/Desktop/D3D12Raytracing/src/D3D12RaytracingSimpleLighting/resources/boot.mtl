@@ -1,0 +1,11 @@
+# File created by ZBrush
+# ToolType: PolyMesh3D
+# www.zbrush.com
+newmtl 13___Default
+map_Kd STC_Boot_DIF.jpg
+Ka 0.02 0.17 0.02
+Kd 0.07 0.61 0.07
+Ks 0.633 0.72 0.633
+Ke 0.0000 0.0000 0.0000
+Ns 0.6
+illum 2000

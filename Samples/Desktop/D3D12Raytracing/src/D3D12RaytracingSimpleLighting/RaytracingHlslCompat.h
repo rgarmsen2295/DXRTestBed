@@ -28,13 +28,17 @@ struct ProceduralPrimitiveAttributes
 
 struct RayPayload
 {
-	XMFLOAT4 color;
+	XMFLOAT4 color;/*
+	XMFLOAT3 origin;
+	XMFLOAT3 direction;*/
 	UINT   recursionDepth;
 	bool isMiss;
 };
 
 struct ShadowRayPayload
 {
+	XMFLOAT3 origin;
+	XMFLOAT3 direction;
 	bool hit;
 };
 
@@ -71,6 +75,8 @@ struct Vertex
 struct Sphere
 {
 	XMFLOAT4 info; // xyz - center position, w - radius
+	XMMATRIX transform;
+	XMMATRIX invTransform;
 };
 
 // Ray types traced in this sample.

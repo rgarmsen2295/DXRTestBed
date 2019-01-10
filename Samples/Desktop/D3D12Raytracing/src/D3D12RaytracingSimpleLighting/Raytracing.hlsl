@@ -52,6 +52,12 @@ float3 HitWorldPosition()
     return WorldRayOrigin() + RayTCurrent() * WorldRayDirection();
 }
 
+// Retrieve hit object position.
+float3 HitObjectPosition()
+{
+    return ObjectRayOrigin() + RayTCurrent() * ObjectRayDirection();
+}
+
 // Retrieve attribute at a hit position interpolated from vertex attributes using the hit's barycentrics.
 float3 HitAttribute(float3 vertexAttribute[3], BuiltInTriangleIntersectionAttributes attr)
 {
@@ -106,7 +112,7 @@ float4 CalculateDiffuseLighting(float3 hitPosition, float3 normal)
     float fNDotL = max(0.0f, dot(pixelToLight, normal));
 
     return g_sceneCB.lightDiffuseColor * fNDotL;
-    }
+}
 
 // Calculate ray differentials.
 void CalculateRayDifferentials(out float2 ddx_uv, out float2 ddy_uv, in float2 uv, in float3 hitPosition, in float3 surfaceNormal, in float3 cameraPosition, in float4x4 projectionToWorld)
@@ -172,7 +178,7 @@ void MyRaygenShader()
 }
 
 // Trace a shadow ray and return true if it hits any geometry.
-bool TraceShadowRayAndReportIfHit(in Ray ray, UINT currentRayRecursionDepth)
+bool TraceShadowRayAndReportIfHit(in float shadowLen, in Ray ray, UINT currentRayRecursionDepth)
 {
     if (currentRayRecursionDepth > MAX_RAY_RECURSION_DEPTH)
     {
@@ -186,12 +192,12 @@ bool TraceShadowRayAndReportIfHit(in Ray ray, UINT currentRayRecursionDepth)
     // Set TMin to a zero value to avoid aliasing artifcats along contact areas.
     // Note: make sure to enable back-face culling so as to avoid surface face fighting.
     rayDesc.TMin = 0.01;
-    rayDesc.TMax = 10000;
+    rayDesc.TMax = shadowLen;// 10000;
 
     // Initialize shadow ray payload.
     // Set the initial value to true since closest and any hit shaders are skipped. 
     // Shadow miss shader, if called, will set it to false.
-    ShadowRayPayload shadowPayload = { true };
+    ShadowRayPayload shadowPayload = { ray.origin, ray.direction, true };
     if (g_sceneCB.useCharacterSpheresForPrimary)
     {
         TraceRay(GIScene,
@@ -447,16 +453,17 @@ void TriangleClosestHitShader(inout RayPayload payload, in TriangleAttributes at
     else
     {
         // Compute the triangle's normal.
-        // This is redundant and done for illustration purposes 
-        // as all the per-vertex normals are the same and match triangle's normal in this sample. 
-        triangleNormal = normalize(HitAttribute(vertexNormals, attr));
+        //triangleNormal = normalize(HitAttribute(vertexNormals, attr));
+        triangleNormal = normalize(mul(ObjectToWorld3x4(), float4(HitAttribute(vertexNormals, attr), 0.0)));
     }
 
     // Shadow component.
     // Trace a shadow ray.
-    float3 shadowDir = normalize(g_sceneCB.lightPosition.xyz - hitPosition);
+    float3 shadowDir = g_sceneCB.lightPosition.xyz - hitPosition;
+    float shadowLen = length(shadowDir);
+    shadowDir = normalize(shadowDir);
     Ray shadowRay = { hitPosition, shadowDir };
-    float shadowRayHit = TraceShadowRayAndReportIfHit(shadowRay, payload.recursionDepth + 1) ? 0.0 : 1.0;
+    float shadowRayHit = TraceShadowRayAndReportIfHit(shadowLen, shadowRay, payload.recursionDepth + 1) ? 0.0 : 1.0;
 
     float4 diffuseColor = CalculateDiffuseLighting(hitPosition, triangleNormal);
     
@@ -500,7 +507,7 @@ void TriangleClosestHitShader(inout RayPayload payload, in TriangleAttributes at
 }
 
 // Source: https://gamedev.stackexchange.com/questions/114412/how-to-get-uv-coordinates-for-sphere-cylindrical-projection
-float2 GetSphereTexCoords(in float3 surfacePosition, in float3 normal)
+float2 GetSphereTexCoords(in float3 normal)
 {
     float2 uv;
     uv.x = atan2(-normal.x, normal.z) / (2 * PI) + 0.5;
@@ -509,11 +516,11 @@ float2 GetSphereTexCoords(in float3 surfacePosition, in float3 normal)
     return uv;
 }
 
-float4 GetSphereTextureColor(in float3 hitPosition, in float3 normal)
+float4 GetSphereTextureColor(in float3 normal)
 {
     float2 ddx_uv;
     float2 ddy_uv;
-    float2 uv = GetSphereTexCoords(hitPosition, normal);
+    float2 uv = GetSphereTexCoords(normal);
 
     uint2 texDimsTemp;
     l_sphereDiffuseTex.GetDimensions(texDimsTemp.x, texDimsTemp.y);
@@ -528,21 +535,31 @@ float4 GetSphereTextureColor(in float3 hitPosition, in float3 normal)
 void AABBClosestHitShader(inout RayPayload payload, in ProceduralPrimitiveAttributes attr)
 {
     float3 hitPosition = HitWorldPosition();
-    float4 diffuseTextureColor = GetSphereTextureColor(hitPosition, attr.normal);
+    //float3 hitPosition = HitObjectPosition();
+    //hitPosition = mul(float4(hitPosition, 1.0), l_sphereCB.transform);
+    //hitPosition = normalize(mul(ObjectToWorld3x4(), float4(hitPosition, 1.0)));
 
+    float3 normal = attr.normal;//normalize(mul(ObjectToWorld3x4(), float4(attr.normal, 0))).xyz; //normalize(attr.normal);//
+    //normal = normalize(mul(float4(normal, 0.0), l_sphereCB.transform));
+
+    float4 diffuseTextureColor = GetSphereTextureColor(normal);
+    normal = normalize(mul(ObjectToWorld3x4(), float4(normal, 0.0)));
+    
     // Shadow component.
     // Trace a shadow ray.
     float3 shadowDir = normalize(g_sceneCB.lightPosition.xyz - hitPosition);
-    Ray shadowRay = { hitPosition /*+ (0.01 * shadowDir)*/, shadowDir };
-    float shadowRayHit = TraceShadowRayAndReportIfHit(shadowRay, payload.recursionDepth) ? 0.0 : 1.0;
+    float shadowLen = length(shadowDir);
+    shadowDir = normalize(shadowDir);
+    Ray shadowRay = { hitPosition, shadowDir };
+    float shadowRayHit = TraceShadowRayAndReportIfHit(shadowLen, shadowRay, payload.recursionDepth) ? 0.0 : 1.0;
 
-    float4 diffuseColor = CalculateDiffuseLighting(hitPosition, attr.normal);
+    float4 diffuseColor = CalculateDiffuseLighting(hitPosition, normal);
 
     // Calculate diffuse GI.
     float4 diffuseGIColor = float4(0.0, 0.0, 0.0, 0.0);
     if (payload.recursionDepth < 2 && g_sceneCB.useGlobalIllumination)
     {
-        diffuseGIColor = calculateDiffuseGI(payload, hitPosition, attr.normal);
+        diffuseGIColor = calculateDiffuseGI(payload, hitPosition, normal);
     }
     else
     {
@@ -555,7 +572,6 @@ void AABBClosestHitShader(inout RayPayload payload, in ProceduralPrimitiveAttrib
     float4 color = (diffuseGIColor * diffuseTextureColor) + (diffuseColor * diffuseTextureColor * shadowRayHit);
     payload.color = color;
     payload.color.a = 1.0;
-
 }
 
 void swap(inout float a, inout float b)
@@ -610,7 +626,13 @@ bool SolveQuadraticEqn(float a, float b, float c, out float x0, out float x1)
 float3 CalculateNormalForARaySphereHit(in Ray ray, in float thit, float3 center)
 {
     float3 hitPosition = ray.origin + thit * ray.direction;
-    return normalize(hitPosition - center);
+    //hitPosition = mul(float4(hitPosition, 1), WorldToObject3x4()).xyz;
+    
+    float3 normal = normalize(hitPosition - center);
+    //normal = normalize(mul(float4(normal, 1.0), l_sphereCB.transform));
+    //normal = normalize(mul(ObjectToWorld3x4(), float4(normal, 0.0)));
+
+    return normal;
 }
 
 // Analytic solution of an unbounded ray sphere intersection points.
@@ -638,9 +660,33 @@ Ray GetRayInAABBPrimitiveLocalSpace()
     // Retrieve a ray origin position and direction in bottom level AS space 
     // and transform them into the AABB primitive's local space.
     Ray ray;
-    ray.origin = ObjectRayOrigin();//mul(float4(ObjectRayOrigin(), 1), attr.bottomLevelASToLocalSpace).xyz;
-    ray.direction = ObjectRayDirection();//mul(ObjectRayDirection(), (float3x3) attr.bottomLevelASToLocalSpace);
+    ray.origin = ObjectRayOrigin();//mul(float4(ObjectRayOrigin(), 1.0), l_sphereCB.invTransform); //mul(WorldToObject4x3(), float4(ObjectRayOrigin(), 1));//, WorldToObject3x4()).xyz;
+    ray.direction = ObjectRayDirection();//mul(float4(ObjectRayDirection(), 0.0), l_sphereCB.invTransform);//mul(WorldToObject4x3(), float4(ObjectRayDirection(), 0));//, WorldToObject3x4()).xyz;
     return ray;
+}
+
+// https://answers.unity.com/questions/62644/distance-between-a-ray-and-a-point.html
+float ClosestPointOnRayToPoint(in float3 center, in float3 rayOrigin, in float3 rayDir)
+{
+    return rayOrigin + rayDir * dot(rayDir, center - rayOrigin);
+}
+
+bool DoesRayIntersectsObject(in float3 center, in float radius, in float3 normal, in float3 rayOrigin, in float3 rayDir)
+{
+        //return true;
+    // Closest point along the ray to the center.
+    float3 closestPoint = ClosestPointOnRayToPoint(center, rayOrigin, normalize(rayDir));
+    float3 alphaDir = closestPoint - center;
+    float3 normalAlphaDir = alphaDir / radius;
+
+    float alpha = GetSphereTextureColor(normalAlphaDir).a;
+    
+    if (length(normalAlphaDir) > alpha)
+    {
+        return false;
+    }
+
+    return true;
 }
 
 [shader("intersection")]
@@ -670,7 +716,7 @@ void SphereIntersectionShader()
             return; // both t0 and t1 are before RayTMin
 
         attr.normal = CalculateNormalForARaySphereHit(ray, t1, center);
-        if (IsAValidHit(ray, t1, attr.normal))
+        if (IsAValidHit(ray, t1, attr.normal) && DoesRayIntersectsObject(center, radius, attr.normal, ray.origin, ray.direction))
         {
             float thit = t1;
             ReportHit(thit, /*hitKind*/0, attr);
@@ -679,14 +725,14 @@ void SphereIntersectionShader()
     else
     {
         attr.normal = CalculateNormalForARaySphereHit(ray, t0, center);
-        if (IsAValidHit(ray, t0, attr.normal))
+        if (IsAValidHit(ray, t0, attr.normal) && DoesRayIntersectsObject(center, radius, attr.normal, ray.origin, ray.direction))
         {
             float thit = t0;
             ReportHit(thit, /*hitKind*/0, attr);
         }
 
         attr.normal = CalculateNormalForARaySphereHit(ray, t1, center);
-        if (IsAValidHit(ray, t1, attr.normal))
+        if (IsAValidHit(ray, t1, attr.normal) && DoesRayIntersectsObject(center, radius, attr.normal, ray.origin, ray.direction))
         {
             float thit = t1;
             ReportHit(thit, /*hitKind*/0, attr);

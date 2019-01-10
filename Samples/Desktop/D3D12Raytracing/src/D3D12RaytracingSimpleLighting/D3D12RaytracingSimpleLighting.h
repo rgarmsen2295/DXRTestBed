@@ -136,6 +136,7 @@ private:
     D3DBuffer m_cubeVertexBuffer;
 	std::shared_ptr<Shape> m_sponza;
 	std::shared_ptr<Shape> m_character;
+	std::shared_ptr<Shape> m_boot;
 	std::vector <Sphere> m_spheres;
 	UINT m_numSpheres;
 	std::shared_ptr<Texture> m_sphereTexture;
@@ -143,6 +144,7 @@ private:
 	UINT m_geometryDescriptorIndex;
 
 	XMVECTOR m_characterPosition;
+	float m_characterRotation;
 
 	// Cube indices.
 	Index m_cubeIndices[36] =
@@ -238,9 +240,19 @@ private:
     /*ComPtr<ID3D12Resource> m_bottomLevelAccelerationStructure;
     ComPtr<ID3D12Resource> m_topLevelAccelerationStructure;*/
 
+	float m_elapsedTime;
+
 	// Acceleration structure
 	ComPtr<ID3D12Resource> m_bottomLevelAS[BottomLevelASType::Count];
 	//AccelerationStructureBuffers m_topLevelAS;//ComPtr<ID3D12Resource> m_topLevelAS;
+	ComPtr<ID3D12Resource> m_topLevelASOld;
+	ComPtr<ID3D12Resource> m_topLevelScratchOld;
+	ComPtr<ID3D12Resource> m_instanceDescsResourceOld;
+
+	ComPtr<ID3D12Resource> m_topLevelASGIOld;
+	ComPtr<ID3D12Resource> m_topLevelScratchGIOld;
+	ComPtr<ID3D12Resource> m_instanceDescsResourceGIOld;
+
 	ComPtr<ID3D12Resource> m_topLevelAS;
 	ComPtr<ID3D12Resource> m_topLevelScratch;
 	ComPtr<ID3D12Resource> m_instanceDescsResource;
