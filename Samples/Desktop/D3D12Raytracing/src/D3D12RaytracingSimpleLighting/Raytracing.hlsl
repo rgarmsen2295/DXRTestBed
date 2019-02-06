@@ -36,7 +36,7 @@ ConstantBuffer<SceneConstantBuffer> g_sceneCB : register(b0);
 // Triangle Local Resources
 ConstantBuffer<CubeConstantBuffer> l_cubeCB : register(b1);
 StructuredBuffer<Index> Indices : register(t2, space0);
-StructuredBuffer<Vertex> Vertices : register(t3, space0);
+StructuredBuffer<Vertex> Vertices : register(t3, space0) : POSITION;
 Texture2D<float4> l_triangleDiffuseTex : register(t4, space0);
 Texture2D<float4> l_triangleNormalTex : register(t5, space0);
 
@@ -673,7 +673,7 @@ float ClosestPointOnRayToPoint(in float3 center, in float3 rayOrigin, in float3 
 
 bool DoesRayIntersectsObject(in float3 center, in float radius, in float3 normal, in float3 rayOrigin, in float3 rayDir)
 {
-        //return true;
+    return true;
     // Closest point along the ray to the center.
     float3 closestPoint = ClosestPointOnRayToPoint(center, rayOrigin, normalize(rayDir));
     float3 alphaDir = closestPoint - center;
@@ -681,7 +681,7 @@ bool DoesRayIntersectsObject(in float3 center, in float radius, in float3 normal
 
     float alpha = GetSphereTextureColor(normalAlphaDir).a;
     
-    if (length(normalAlphaDir) > alpha)
+    if (length(normalAlphaDir) * 0.35 > alpha)
     {
         return false;
     }

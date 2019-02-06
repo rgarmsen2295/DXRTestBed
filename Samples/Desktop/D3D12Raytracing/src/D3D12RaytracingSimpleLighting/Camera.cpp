@@ -69,29 +69,25 @@ void Camera::update(float deltaTime) {
 	XMVECTOR upCrossW = XMVector3Normalize(XMVector3Cross(Up, w));
 	XMVECTOR u = upCrossW;
 
-	if (GetKeyState('W') & 0x8000 ||
-		GetKeyState(VK_UP) & 0x8000) {
+	if (GetKeyState('W') & 0x8000) {
 
 		// Move in the neg dir along the w camera axis (forward)
 		setEye(Eye + (WSScale * w * deltaTime));
 	}
 
-	if (GetKeyState('A') & 0x8000 ||
-		GetKeyState(VK_LEFT) & 0x8000) {
+	if (GetKeyState('A') & 0x8000) {
 
 		// Move in the neg dir along the u camera axis (left)
 		setEye(Eye - (ADScale * u * deltaTime));
 	}
 
-	if (GetKeyState('S') & 0x8000 ||
-		GetKeyState(VK_DOWN) & 0x8000) {
+	if (GetKeyState('S') & 0x8000) {
 
 		// Move in the npos dir along the w camera axis (backwards)
 		setEye(Eye - (WSScale * w * deltaTime));
 	}
 
-	if (GetKeyState('D') & 0x8000 ||
-		GetKeyState(VK_RIGHT) & 0x8000) {
+	if (GetKeyState('D') & 0x8000) {
 
 		// Move in the pos dir along the u camera axis (right)
 		setEye(Eye + (ADScale * u * deltaTime));

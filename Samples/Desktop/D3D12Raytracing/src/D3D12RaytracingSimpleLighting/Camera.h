@@ -51,7 +51,7 @@ private:
 
 	// Angle values used for pitch and yaw respectively
 	float alpha = 0;
-	float beta = 90;
+	float beta = 0;
 
 	// Radian equivalents for alpha and beta
 	float alphaRad = alpha * XM_PI / 180.0f;

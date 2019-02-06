@@ -10,6 +10,8 @@
 //*********************************************************
 
 #pragma once
+#define USE_DYNAMIC
+#define OLD_MAN
 
 #include <array>
 #include <vector>
@@ -86,7 +88,8 @@ private:
     static const UINT FrameCount = 3;
 
 	// Constants.
-	const UINT NUM_BLAS = 3;          // Triangle x 2 + AABB bottom-level AS.
+	const UINT NUM_BLAS = 2;          // Triangle Sponza + AABB bottom-level AS or Triangle Character.
+	const UINT numDynamicObjects = 10000;
 	const float c_aabbWidth = 1;      // AABB width.
 	const float c_aabbDistance = 1;   // Distance between AABBs.
 
