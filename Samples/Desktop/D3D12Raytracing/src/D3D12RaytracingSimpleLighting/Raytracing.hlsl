@@ -191,7 +191,7 @@ bool TraceShadowRayAndReportIfHit(in float shadowLen, in Ray ray, UINT currentRa
     rayDesc.Direction = ray.direction;
     // Set TMin to a zero value to avoid aliasing artifcats along contact areas.
     // Note: make sure to enable back-face culling so as to avoid surface face fighting.
-    rayDesc.TMin = 0.01;
+    rayDesc.TMin = 0.001;//0.01;
     rayDesc.TMax = shadowLen;// 10000;
 
     // Initialize shadow ray payload.
@@ -241,7 +241,7 @@ RayPayload TraceGIRay(in Ray ray, UINT currentRayRecursionDepth)
     rayDesc.Direction = ray.direction;
     // Set TMin to a zero value to avoid aliasing artifcats along contact areas.
     // Note: make sure to enable back-face culling so as to avoid surface face fighting.
-    rayDesc.TMin = 0.01;
+    rayDesc.TMin = 0.00;
     rayDesc.TMax = 1.0;//000; //0.5
 
     // Initialize shadow ray payload.
@@ -359,8 +359,8 @@ float4 calculateDiffuseGI(in RayPayload payload, in float3 hitPosition, in float
             
     // based parially from source provided at: https://www.scratchapixel.com/code.php?id=34&origin=/lessons/3d-basic-rendering/global-illumination-path-tracing
     float3 Nt, Nb;
-    createCoordinateSystem(normal, Nt, Nb); 
-    float pdf = 1 / (2 * PI); 
+    createCoordinateSystem(normal, Nt, Nb);
+    float pdf = 1 / (2 * PI);
     for (int i = 0; i < numGIRays; i++)
     {
         float2 u = float2(float(rand_xorshift()) * (1.0 / 4294967296.0), float(rand_xorshift()) * (1.0 / 4294967296.0)); //InterleavedGradientNoise((hitPosition.xy + i) / numGIRays);
@@ -370,13 +370,13 @@ float4 calculateDiffuseGI(in RayPayload payload, in float3 hitPosition, in float
         dir = SampleDisk(u.x, u.y/*, dir.x, dir.y*/);
 
         float3 dirInWorld = float3(
-            dir.x * Nb.x + dir.y * normal.x + dir.z * Nt.x,
-            dir.x * Nb.y + dir.y * normal.y + dir.z * Nt.y,
-            dir.x * Nb.z + dir.y * normal.z + dir.z * Nt.z);
+        dir.x * Nb.x + dir.y * normal.x + dir.z * Nt.x,
+        dir.x * Nb.y + dir.y * normal.y + dir.z * Nt.y,
+        dir.x * Nb.z + dir.y * normal.z + dir.z * Nt.z);
         dirInWorld = normalize(dirInWorld);
 
         // Set up and trace GI ray.
-        Ray giRay = { hitPosition, dirInWorld };
+        Ray giRay = { hitPosition, normalize(dirInWorld)};
         RayPayload giPayload = TraceGIRay(giRay, payload.recursionDepth);
 
         if (!giPayload.isMiss)
@@ -394,16 +394,18 @@ float4 calculateDiffuseGI(in RayPayload payload, in float3 hitPosition, in float
 [shader("closesthit")]
 void TriangleClosestHitShader(inout RayPayload payload, in TriangleAttributes attr)
 {
+        if (payload.recursionDepth >= 2 && l_cubeCB.isDynamic == 0)
+        {
+            payload.isMiss = true;
+            return;
+        }
+
     float3 hitPosition = HitWorldPosition();
 
-    // Get the base index of the triangle's first 16 bit index.
-    //uint indexSizeInBytes = 2;
-    //uint indicesPerTriangle = 3;
-    //uint triangleIndexStride = indicesPerTriangle * indexSizeInBytes;
-    uint baseIndex = PrimitiveIndex() * 3;//triangleIndexStride;
+    // Get the base index of the triangle
+    uint baseIndex = PrimitiveIndex() * 3;
 
-    // Load up 3 16 bit indices for the triangle.
-    //const uint3 indices = Load3x16BitIndices(baseIndex);
+    // Load up 3 indices for the triangle.
     const uint3 indices = { Indices[baseIndex], Indices[baseIndex + 1], Indices[baseIndex + 2] };
 
     // Retrieve corresponding vertex normals for the triangle vertices.
@@ -445,15 +447,12 @@ void TriangleClosestHitShader(inout RayPayload payload, in TriangleAttributes at
              
         triangleNormal = normalize(l_triangleDiffuseTex.Load(int3(abs(int2(textureUV * texDims)) % texDims, 0.0)));
         triangleNormal = normalize(normalSampleToWorldSpace(triangleNormal, HitAttribute(vertexNormals, attr), HitAttribute(vertexTangents, attr), HitAttribute(vertexBitangents, attr)));
-
-
-        // Disable normal mapping for now.    
-        //triangleNormal = HitAttribute(vertexNormals, attr);
+    
+        triangleNormal = HitAttribute(vertexNormals, attr);
     }
     else
     {
         // Compute the triangle's normal.
-        //triangleNormal = normalize(HitAttribute(vertexNormals, attr));
         triangleNormal = normalize(mul(ObjectToWorld3x4(), float4(HitAttribute(vertexNormals, attr), 0.0)));
     }
 
@@ -499,10 +498,8 @@ void TriangleClosestHitShader(inout RayPayload payload, in TriangleAttributes at
     //float4 color = g_sceneCB.lightAmbientColor * diffuseTextureColor + diffuseColor * diffuseTextureColor * shadowRayHit;
     //float4 color = (payload.recursionDepth > 1 ? 0.0 : (diffuseGIColor * diffuseTextureColor)) + (diffuseColor * diffuseTextureColor * shadowRayHit);
     float4 color = (diffuseGIColor * diffuseTextureColor) + (diffuseColor * diffuseTextureColor * shadowRayHit);
+
     color.a = alpha;
-
-    //color.rgb = triangleNormal;
-
     payload.color = color;
 }
 
@@ -535,12 +532,8 @@ float4 GetSphereTextureColor(in float3 normal)
 void AABBClosestHitShader(inout RayPayload payload, in ProceduralPrimitiveAttributes attr)
 {
     float3 hitPosition = HitWorldPosition();
-    //float3 hitPosition = HitObjectPosition();
-    //hitPosition = mul(float4(hitPosition, 1.0), l_sphereCB.transform);
-    //hitPosition = normalize(mul(ObjectToWorld3x4(), float4(hitPosition, 1.0)));
 
-    float3 normal = attr.normal;//normalize(mul(ObjectToWorld3x4(), float4(attr.normal, 0))).xyz; //normalize(attr.normal);//
-    //normal = normalize(mul(float4(normal, 0.0), l_sphereCB.transform));
+    float3 normal = attr.normal;
 
     float4 diffuseTextureColor = GetSphereTextureColor(normal);
     normal = normalize(mul(ObjectToWorld3x4(), float4(normal, 0.0)));
@@ -563,13 +556,11 @@ void AABBClosestHitShader(inout RayPayload payload, in ProceduralPrimitiveAttrib
     }
     else
     {
-        // Use basic ambient "guess" if we're past the max ray depth.
-        //diffuseGIColor = 0.0;//g_sceneCB.lightAmbientColor * (payload.recursionDepth > 1 ? 0.2 : 1.0);
         diffuseGIColor = g_sceneCB.lightAmbientColor * (payload.recursionDepth > 1 ? 0.0 : 1.0);
     }
 
-    //payload.color = diffuseTextureColor * g_sceneCB.lightAmbientColor + textureColor * diffuseColor * shadowRayHit;
     float4 color = (diffuseGIColor * diffuseTextureColor) + (diffuseColor * diffuseTextureColor * shadowRayHit);
+
     payload.color = color;
     payload.color.a = 1.0;
 }
@@ -626,11 +617,7 @@ bool SolveQuadraticEqn(float a, float b, float c, out float x0, out float x1)
 float3 CalculateNormalForARaySphereHit(in Ray ray, in float thit, float3 center)
 {
     float3 hitPosition = ray.origin + thit * ray.direction;
-    //hitPosition = mul(float4(hitPosition, 1), WorldToObject3x4()).xyz;
-    
     float3 normal = normalize(hitPosition - center);
-    //normal = normalize(mul(float4(normal, 1.0), l_sphereCB.transform));
-    //normal = normalize(mul(ObjectToWorld3x4(), float4(normal, 0.0)));
 
     return normal;
 }
@@ -655,13 +642,12 @@ bool IsAValidHit(in Ray ray, in float thit, in float3 hitSurfaceNormal)
 // Get ray in AABB's local space.
 Ray GetRayInAABBPrimitiveLocalSpace()
 {
-    //PrimitiveInstancePerFrameBuffer attr = g_AABBPrimitiveAttributes[l_aabbCB.instanceIndex];
-
     // Retrieve a ray origin position and direction in bottom level AS space 
     // and transform them into the AABB primitive's local space.
     Ray ray;
-    ray.origin = ObjectRayOrigin();//mul(float4(ObjectRayOrigin(), 1.0), l_sphereCB.invTransform); //mul(WorldToObject4x3(), float4(ObjectRayOrigin(), 1));//, WorldToObject3x4()).xyz;
-    ray.direction = ObjectRayDirection();//mul(float4(ObjectRayDirection(), 0.0), l_sphereCB.invTransform);//mul(WorldToObject4x3(), float4(ObjectRayDirection(), 0));//, WorldToObject3x4()).xyz;
+    ray.origin = ObjectRayOrigin();
+    ray.direction = ObjectRayDirection();
+
     return ray;
 }
 
@@ -673,14 +659,13 @@ float ClosestPointOnRayToPoint(in float3 center, in float3 rayOrigin, in float3 
 
 bool DoesRayIntersectsObject(in float3 center, in float radius, in float3 normal, in float3 rayOrigin, in float3 rayDir)
 {
-    return true;
     // Closest point along the ray to the center.
     float3 closestPoint = ClosestPointOnRayToPoint(center, rayOrigin, normalize(rayDir));
     float3 alphaDir = closestPoint - center;
     float3 normalAlphaDir = alphaDir / radius;
 
     float alpha = GetSphereTextureColor(normalAlphaDir).a;
-    
+
     if (length(normalAlphaDir) * 0.35 > alpha)
     {
         return false;
@@ -693,10 +678,6 @@ bool DoesRayIntersectsObject(in float3 center, in float radius, in float3 normal
 void SphereIntersectionShader()
 {
     ProceduralPrimitiveAttributes attr;
-    
-    //attr.normal = float3(1.0, 1.0, 1.0);
-    //ReportHit(RayTMin() + 1.0, /*hitKind*/0, attr);
-    //return;
 
     float3 center = l_sphereCB.info.xyz;
     float radius = l_sphereCB.info.w;
@@ -743,7 +724,7 @@ void SphereIntersectionShader()
 [shader("miss")]
 void MyMissShader(inout RayPayload payload)
 {
-    float4 background = g_sceneCB.lightAmbientColor;//float4(0.1f, 0.1f, 0.1f, 1.0f);//float4(1.0f, 1.0f, 1.0f, 1.0f); float4(0.0f, 0.2f, 0.4f, 1.0f);
+    float4 background = g_sceneCB.lightAmbientColor;
     payload.color = background;
     payload.isMiss = true;
 }

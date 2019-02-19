@@ -28,9 +28,7 @@ struct ProceduralPrimitiveAttributes
 
 struct RayPayload
 {
-	XMFLOAT4 color;/*
-	XMFLOAT3 origin;
-	XMFLOAT3 direction;*/
+	XMFLOAT4 color;
 	UINT   recursionDepth;
 	bool isMiss;
 };
@@ -61,6 +59,7 @@ struct CubeConstantBuffer
     XMFLOAT4 albedo;
 	UINT	 useDiffuseTexture;
 	UINT	 useNormalTexture;
+	UINT	 isDynamic;
 };
 
 struct Vertex

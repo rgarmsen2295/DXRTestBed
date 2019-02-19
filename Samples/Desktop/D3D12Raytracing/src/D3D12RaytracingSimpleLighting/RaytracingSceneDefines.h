@@ -25,8 +25,6 @@ namespace GlobalRootSignature {
             AccelerationStructure,
 			GIAccelerationStructure,
             SceneConstant,
-            //AABBattributeBuffer,
-            //VertexBuffers,
             Count
         };
     }
@@ -110,17 +108,9 @@ namespace IntersectionShaderType {
     };
     inline UINT PerPrimitiveTypeCount(Enum type)
     {
-        /*switch (type)
-        {
-        case AnalyticPrimitive: return AnalyticPrimitive::Count;
-        case VolumetricPrimitive: return VolumetricPrimitive::Count;
-        case SignedDistancePrimitive: return SignedDistancePrimitive::Count;
-        }*/
         return 0;
     }
 	static const UINT MaxPerPrimitiveTypeCount = 0;
-        //max(AnalyticPrimitive::Count, max(VolumetricPrimitive::Count, SignedDistancePrimitive::Count));
 	static const UINT TotalPrimitiveCount = 15;
-        //AnalyticPrimitive::Count + VolumetricPrimitive::Count + SignedDistancePrimitive::Count;
 }
 
